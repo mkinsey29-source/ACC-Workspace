@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # Mr. Mak Workspace
 
 Read [AGENTS.md](AGENTS.md) for the repository rules and
