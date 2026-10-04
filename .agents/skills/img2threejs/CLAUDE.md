@@ -1,8 +1,6 @@
 # Shared project instructions
 
-This repository is the canonical source for the `img2threejs` skill. Host entrypoints
-(`~/.claude/skills/img2threejs`, `~/.codex/skills/img2threejs`) should be symlinks to one checkout —
-never independent copies, or the two hosts drift apart silently.
+This is the img2threejs skill distribution inside ACC-Workspace. The maintained workspace source is .agents/skills/img2threejs; .claude/skills/img2threejs is its complete distribution copy. Edit the maintained source and run npm run skills:sync as directed by the root AGENTS.md. Host entrypoints outside this workspace may use symlinks to a single canonical checkout; do not replace this workspace's distribution copies with symlinks.
 
 ## Change rules
 
