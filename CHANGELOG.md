@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 (unreleased)
+
+- Connect a phone from Chats with a private Tailscale route, a short-lived QR code and desktop approval. View and revoke paired devices in the same panel.
+- Read Codex and Claude conversations, use a live terminal view for supported agents, and send messages or images from a mobile web app. Desktop and phone selections stay independent.
+- Keep drafts per chat and recover deliveries with persisted message receipts. Opening a phone never changes desktop terminal dimensions.
+- Read Workspace HTML and Markdown reports through isolated previews with image enlargement and downloads. Add mobile checks to the shared Claude and Codex authoring skill.
+- Update patched source-map-js and smol-toml dependencies.
+
 ## 0.4.19 - 2026-10-05
 
 - Talk to Mak now accepts pasted screenshots and attached images. Preview or

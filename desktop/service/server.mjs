@@ -22,10 +22,11 @@ import { body, equalSecret, json, publicError, readJson, realFile, saveJson, sec
 import { ProjectAdapterRegistry } from './project-adapters/registry.mjs';
 import { KnowledgeManager, MarkdownKnowledgeProvider } from './knowledge/providers.mjs';
 import { IntegrationManager } from './integrations/manager.mjs';
+import { MobileGateway } from './mobile.mjs';
 
 const listen = server => new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${server.address().port}`)); });
 
-export async function createService({ repo, uiDir, stateDir, token = secret(), native = () => {}, restoreSessions = false, mcpOptions }) {
+export async function createService({ repo, uiDir, stateDir, token = secret(), native = () => {}, restoreSessions = false, mcpOptions, mobileOptions }) {
   repo = await realpath(repo);
   stateDir ||= path.join(repo, '.mrmak');
   const files = new Files(repo);
@@ -53,6 +54,7 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   let voiceOwner = null;
   let closing = false;
   const clients = new Set();
+  let mobile;
   const notices = [];
   const send = (ws, type, value) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, ...value })); };
   const broadcast = (type, value) => { for (const ws of clients) send(ws, type, value); };
@@ -162,7 +164,7 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
     try {
       const url = new URL(request.url, origin);
       if (request.headers.host !== new URL(origin).host) throw Object.assign(new Error('Unexpected host'), { status: 403 });
-      if (url.pathname === '/health') return json(response, 200, { service: 'mrmak', version: '0.4.14' });
+      if (url.pathname === '/health') return json(response, 200, { service: 'mrmak', version: '0.5.0' });
       if (url.pathname.startsWith('/api/')) {
         authorize(request);
         const method = request.method;
@@ -179,6 +181,13 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
           return json(response, 201, await attachments.save(Buffer.concat(chunks), decodeURIComponent(request.headers['x-file-name'] || 'Screenshot')));
         }
         const data = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method) ? await body(request, url.pathname === '/api/files/markdown' ? 12 * 1024 * 1024 : 256 * 1024) : {};
+        if (method === 'GET' && url.pathname === '/api/mobile') return json(response, 200, mobile.status());
+        if (method === 'GET' && url.pathname === '/api/mobile/check') return json(response, 200, await mobile.transport.probe());
+        if (method === 'POST' && url.pathname === '/api/mobile/enable') return json(response, 200, await mobile.enable());
+        if (method === 'POST' && url.pathname === '/api/mobile/disable') return json(response, 200, await mobile.disable());
+        if (method === 'POST' && url.pathname === '/api/mobile/pair') return json(response, 200, await mobile.newPairing());
+        if (method === 'POST' && url.pathname === '/api/mobile/approve') return json(response, 200, await mobile.approve(data.id));
+        if (method === 'POST' && url.pathname === '/api/mobile/revoke') return json(response, 200, await mobile.revoke(data.id));
         if (method === 'GET' && url.pathname === '/api/bootstrap') {
           const keys = parseEnv(await readFile(path.join(repo, '.env'), 'utf8').catch(() => ''));
           return json(response, 200, { repo, contentBase: `${files.origin}/view/${files.repoGrant}`, agents: inventory(), sessions: sessions.list(), settings, selectedId, notices, coordinator: coordinator.state, voice: { configured: !!(keys.OPENAI_API_KEY || keys.OPENAI_KEY || process.env.OPENAI_API_KEY), owner: voiceOwner }, voiceHistory, operations: [...coordinator.operations.values(), ...quick.operations.values()].sort((a, b) => a.at.localeCompare(b.at)).slice(-30) });
@@ -310,6 +319,7 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   });
   const origin = await listen(server);
   files.uiOrigin = origin;
+  mobile = await new MobileGateway({ ...mobileOptions, repo, uiDir, stateDir, sessions, attachments, settings: () => settings, changed: state => broadcast('mobile-state', { mobile: state }) }).init();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url, origin);
@@ -346,12 +356,13 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   try { watcher = watch(path.join(repo, 'workspace', 'workspace.json'), () => broadcast('workspace-changed', {})); watcher.on('error', () => {}); } catch { /* Registry may be created after first setup. */ }
   const restoreTimer = restoreSessions ? setTimeout(() => sessions.restore().catch(error => sessions.emit('service-error', error)), 100) : null;
   return {
-    origin, contentOrigin: files.origin, token, sessions, coordinator, quick, workspace, files, projects, knowledge, integrations,
+    origin, contentOrigin: files.origin, token, sessions, coordinator, quick, workspace, files, projects, knowledge, integrations, mobile,
     urls: { workspace: `${origin}/?desktop=1&surface=workspace&token=${token}`, chats: `${origin}/?desktop=1&surface=chats&token=${token}` },
       nativeMessage: event => nativeSettings.receive(event),
       async close() {
         if (closing) return; closing = true; mcp.close(); nativeSettings.close(); await files.writes.catch(() => {});
       watcher?.close(); clearTimeout(restoreTimer); coordinator.close(); clearTimeout(settingsTimer); await saveSettings(); await transcriptSave; await quick.saves; await workspace.writes;
+      await mobile.close();
       for (const ws of wss.clients) ws.terminate();
       wss.close(); await sessions.close();
       server.closeAllConnections(); contentServer.closeAllConnections();

@@ -331,6 +331,7 @@ export class Sessions extends EventEmitter {
     session.cols = cols; session.rows = rows;
     session.terminal?.resize(cols, rows);
     session.process?.resize(cols, rows);
+    this.emit('terminal-resized', { id, cols, rows });
     this.dirty = true;
   }
   rename(id, name) { const session = this.get(id); session.name = englishTitle(name, session.name); this.changed(session); return publicSession(session); }

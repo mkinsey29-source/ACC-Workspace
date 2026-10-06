@@ -44,3 +44,4 @@ dialog.mak-lightbox::backdrop{background:#050609e6;backdrop-filter:blur(8px)}
 .mak-lightbox .mak-lightbox-stage.actual{display:block}.mak-lightbox .mak-lightbox-stage.actual img{max-width:none;max-height:none;margin:auto;cursor:zoom-out}
 .mak-lightbox .mak-lightbox-note{font-size:12px;color:#aba0b5;text-align:center;min-height:22px}
 @media(prefers-reduced-motion:reduce){html[data-mak-report] *{scroll-behavior:auto}}
+@media(max-width:600px){html[data-mak-report=document] body{padding:22px 16px 44px;font-size:15px}dialog.mak-lightbox{width:calc(100vw - 16px);height:calc(100dvh - 16px)}.mak-lightbox .mak-lightbox-toolbar{padding:9px;gap:6px}.mak-lightbox .mak-lightbox-caption{flex-basis:calc(100% - 70px)}.mak-lightbox .mak-lightbox-toolbar :is(button,a){min-height:40px;touch-action:manipulation}.mak-lightbox .mak-lightbox-stage{padding:8px}}

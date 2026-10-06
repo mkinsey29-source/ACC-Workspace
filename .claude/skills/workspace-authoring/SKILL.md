@@ -32,3 +32,13 @@ Open every changed tab at wide and narrow sizes. Check media and links, Markdown
 rendering and image close/download controls. Preserve the selected surface during
 loading. Report actual verification and any remaining limitations. Prepare
 desktop changes without restarting active sessions until the user permits it.
+
+Mobile reports use the same HTML or Markdown as desktop. Include the viewport
+meta tag and shared styles; keep the reading order useful in a single column.
+Test at 390 px and 768 px as well as desktop width. Verify readable text without
+zooming, wrapping tab labels, reachable close/download buttons, and working
+image previews with touch. Confine horizontal scrolling to tables and code.
+Use relative assets inside the report folder or `workspace/_shared/`.
+Reports opened through Mobile Access run in an isolated, read-only preview:
+do not depend on the desktop control API, parent-window DOM, local storage or
+absolute localhost URLs. Keep a short result summary before lengthy details.

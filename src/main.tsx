@@ -11,12 +11,15 @@ import './styles/workspace-theme.css'
 // This entrypoint mounts once; it is not a Fast Refresh component module.
 // eslint-disable-next-line react-refresh/only-export-components
 const DesktopApp = lazy(() => import('./desktop/DesktopApp'))
+// eslint-disable-next-line react-refresh/only-export-components
+const MobileApp = lazy(() => import('./mobile/MobileApp'))
+const isMobile = location.pathname === '/mobile' || location.pathname.startsWith('/mobile/')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <WorkspaceTheme />
+    {!isMobile && <WorkspaceTheme />}
     <Suspense fallback={<div className="boot" />}>
-      {isDesktop ? <DesktopApp /> : <App />}
+      {isMobile ? <MobileApp /> : isDesktop ? <DesktopApp /> : <App />}
     </Suspense>
   </StrictMode>,
 )

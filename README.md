@@ -33,6 +33,11 @@ subscription-backed CLI chats without an API key.
 
 ## Everyday tools
 
+The upcoming **0.5** source build adds [mobile access](docs/mobile-access.md).
+Connect your phone from the phone button in Chats to read conversations, send
+follow-ups and images, and open Workspace reports while agents run on your
+computer. It uses Tailscale and a mobile web app you can add to your Home Screen.
+
 - **Your files, close at hand.** Browse a folder tree with Main folders or All
   files, jump to `inbox`, `projects`, `workspace`, `knowledge` and `processes`,
   and open any folder in Windows Explorer.
