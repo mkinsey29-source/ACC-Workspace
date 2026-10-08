@@ -1,7 +1,7 @@
 {
   "name": "mr-mak-workspace",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "scripts": {
     "postinstall": "npm --prefix desktop/service ci",

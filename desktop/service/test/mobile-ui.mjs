@@ -35,7 +35,8 @@ service.sessions.beginDiscovery = () => {};
 const writes = [], ids = [randomUUID(), randomUUID()];
 for (const [index, id] of ids.entries()) {
   const session = service.sessions.make({ id, name: index ? 'Research ideas' : 'Game animations', agent: index ? 'claude' : 'codex', status: 'running', open: true, pinned: !index, cols: 100, rows: 28, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cwd: repo });
-  session.process = { write: data => writes.push({ id, data }), resize: () => {} };
+  const exits = new Set();
+  session.process = { write: data => writes.push({ id, data }), resize: () => {}, onExit: callback => { exits.add(callback); return { dispose: () => exits.delete(callback) }; }, kill: () => { session.process = null; session.status = 'closed'; service.sessions.changed(session); for (const callback of [...exits]) callback({ exitCode: 0 }); } };
   service.sessions.items.set(id, session); await service.sessions.hydrate(session);
   session.preview = 'Latest notes: [Review the animation](C:/Projects/game/characters/' + 'very-long-character-name-'.repeat(12) + '/review.html) and https://example.com/research/' + 'reference'.repeat(40);
   await new Promise(resolve => session.terminal.write(Array.from({ length: 90 }, (_, line) => `Line ${line + 1}: live agent output\r\n`).join(''), resolve));
@@ -172,6 +173,16 @@ try {
   await mobileContext.setOffline(false); await phone.getByText('Connected to your computer', { exact: true }).waitFor();
   assert.equal(await input.inputValue(), 'Keep this draft while I switch chats.');
   await phone.getByRole('button', { name: 'Terminal', exact: true }).click(); await phone.locator('.mobile-terminal .xterm-screen').waitFor();
+  const beforeKeys = writes.length;
+  for (const name of ['Arrow left', 'Arrow up', 'Arrow down', 'Arrow right']) await phone.getByRole('button', { name, exact: true }).click();
+  await phone.waitForTimeout(100);
+  assert.deepEqual(writes.slice(beforeKeys), ['\x1b[D', '\x1b[A', '\x1b[B', '\x1b[C'].map(data => ({ id: ids[1], data })));
+  for (const width of [320, 390]) {
+    await phone.setViewportSize({ width, height: 844 });
+    const keyLayout = await phone.locator('.mobile-terminal-keys').evaluate(node => ({ client: node.clientWidth, scroll: node.scrollWidth, keys: [...node.querySelectorAll('button')].map(button => { const r = button.getBoundingClientRect(); return { left: r.left, right: r.right, width: r.width, height: r.height }; }) }));
+    assert.ok(keyLayout.scroll <= keyLayout.client + 1);
+    assert.ok(keyLayout.keys.every(r => r.left >= 0 && r.right <= width && r.width >= 44 && r.height >= 44));
+  }
   await phone.screenshot({ path: path.join(repo, 'phone-terminal.png') });
   assert.deepEqual(ids.map(id => ({ cols: service.sessions.get(id).cols, rows: service.sessions.get(id).rows })), dimensions);
   await phone.getByRole('button', { name: 'Conversation', exact: true }).click();
@@ -194,11 +205,41 @@ try {
     await phone.setViewportSize({ width, height: 844 });
     assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `No page overflow at ${width}px`);
   }
+  // Close the selected desktop chat from the phone, then resume it from History.
+  // Only the launch is stubbed; closing/persistence/selection use the real service.
+  await phone.getByRole('button', { name: 'Chats', exact: true }).click();
+  await phone.getByRole('button', { name: /Game animations/ }).click();
+  await desktop.getByRole('button', { name: 'Close mobile access', exact: true }).click();
+  await desktop.locator(`[data-chat-tab="${ids[0]}"] [role="tab"]`).click();
+  await input.fill('Keep this draft after closing.');
+  phone.once('dialog', dialog => dialog.dismiss());
+  await phone.getByRole('button', { name: 'Close chat', exact: true }).click();
+  assert.equal(service.sessions.get(ids[0]).open, true);
+  phone.once('dialog', dialog => { assert.match(dialog.message(), /History/); void dialog.accept(); });
+  await phone.getByRole('button', { name: 'Close chat', exact: true }).click();
+  await phone.getByRole('heading', { name: 'Your chats', exact: true }).waitFor();
+  assert.equal(await phone.getByRole('button', { name: /Game animations/ }).count(), 0);
+  await desktop.locator(`[data-chat-tab="${ids[0]}"]`).waitFor({ state: 'detached' });
+  const afterClose = await (await fetch(`${service.origin}/api/bootstrap`, { headers: { Authorization: `Bearer ${service.token}` } })).json();
+  assert.equal(afterClose.selectedId, ids[1]);
+  assert.equal(service.sessions.get(ids[0]).open, false); assert.equal(service.sessions.get(ids[0]).process, null);
+  await phone.getByRole('button', { name: 'History', exact: true }).click();
+  await phone.getByRole('button', { name: /Game animations/ }).click();
+  assert.equal(await input.inputValue(), 'Keep this draft after closing.');
+  assert.equal(await phone.getByRole('button', { name: 'Close chat', exact: true }).count(), 0);
+  const originalLaunch = service.sessions.launch;
+  service.sessions.launch = async session => { assert.equal(session.id, ids[0]); session.process = { write: data => writes.push({ id: session.id, data }), resize() {} }; session.status = 'running'; service.sessions.changed(session); };
+  await phone.getByRole('button', { name: 'Resume chat', exact: true }).click();
+  await phone.getByRole('button', { name: 'Resume chat', exact: true }).waitFor({ state: 'detached' });
+  service.sessions.launch = originalLaunch;
+  assert.equal(service.sessions.get(ids[0]).open, true);
+  await desktop.locator(`[data-chat-tab="${ids[0]}"]`).waitFor();
+  await desktop.getByRole('button', { name: 'Mobile access', exact: true }).click();
   await desktop.getByRole('button', { name: 'Disconnect', exact: true }).click();
   await phone.getByRole('heading', { name: 'Start in Mr. Mak Chats' }).waitFor();
   assert.equal(service.sessions.get(ids[0]).status, 'running'); assert.equal(service.sessions.get(ids[1]).status, 'running');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, fixture: repo, checks: ['QR + desktop approval', 'independent views and PTY sizes', 'microphone permission / record / stop / cancel', 'dictation never auto-sends', 'saved recording recovery after reload and chat switch', 'lost transcription reply reuses provider result', 'lost reply / retry once', 'drafts per chat', 'offline recovery', 'image attachment', 'sandboxed report + image download', 'Markdown preview', 'long-link chat cards at 320/360/393/430/768px', '360/390/768px report layout', 'device revocation'] }));
+  console.log(JSON.stringify({ ok: true, fixture: repo, checks: ['QR + desktop approval', 'independent views and PTY sizes', 'microphone permission / record / stop / cancel', 'dictation never auto-sends', 'saved recording recovery after reload and chat switch', 'lost transcription reply reuses provider result', 'lost reply / retry once', 'drafts per chat', 'offline recovery', 'image attachment', 'sandboxed report + image download', 'Markdown preview', 'long-link chat cards at 320/360/393/430/768px', '360/390/768px report layout', 'four terminal arrows and touch targets', 'close confirmation / desktop tab sync / History resume / draft retention', 'device revocation'] }));
 } finally {
   if (qrSource) await new Promise(resolve => qrSource.close(resolve));
   await browser?.close(); for (const session of service.sessions.items.values()) session.process = null;

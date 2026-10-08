@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 - 2026-10-09
+
+- Add left/right terminal arrows on phones for CLI menus such as reasoning effort. Keep all keys visible with touch-sized buttons that wrap on narrow screens.
+- Close an agent chat from the phone after confirmation. Its desktop tab closes too; the saved conversation stays in History and the phone retains its unsent draft.
+
 ## 0.5.0 - 2026-10-09
 
 - Resolve Windows short paths and linked repository roots before checking mobile report boundaries; external folders remain blocked.

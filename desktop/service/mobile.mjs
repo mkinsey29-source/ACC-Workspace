@@ -22,8 +22,8 @@ const DEVICE_TTL = 180 * 24 * 60 * 60 * 1000;
 const send = (ws, value) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(value)); };
 
 export class MobileGateway {
-  constructor({ repo, uiDir, stateDir, sessions, attachments, settings, changed, transport = new TailscaleTransport(), dictation = new MobileDictation(repo) }) {
-    Object.assign(this, { repo, uiDir, sessions, attachments, settings, changed, transport });
+  constructor({ repo, uiDir, stateDir, sessions, attachments, settings, changed, closeChat, transport = new TailscaleTransport(), dictation = new MobileDictation(repo) }) {
+    Object.assign(this, { repo, uiDir, sessions, attachments, settings, changed, closeChat, transport });
     this.file = path.join(stateDir, 'mobile-access.json');
     this.saves = Promise.resolve(); this.pending = new Map(); this.clients = new Set(); this.inflight = new Map(); this.uploads = new Map(); this.queues = new Map();
     this.transcripts = new MobileTranscripts(); this.active = false; this.error = ''; this.origin = ''; this.rate = { at: Date.now(), count: 0 };
@@ -273,14 +273,15 @@ export class MobileGateway {
           if (!inventory().some(item => item.id !== 'shell' && item.id === data.agent && item.available)) fail('Choose an installed agent.');
           return json(response, 201, await this.sessions.create({ agent: data.agent, name: data.name, cwd: this.repo, bypass: this.settings().defaultBypass === true }));
         }
-        const match = /^\/mobile\/api\/sessions\/([a-f0-9-]{36})\/(messages|send|resume|key)$/.exec(route);
+        const match = /^\/mobile\/api\/sessions\/([a-f0-9-]{36})\/(messages|send|resume|close|key)$/.exec(route);
         if (match) {
           const session = this.session(match[1]);
           if (method === 'GET' && match[2] === 'messages') return json(response, 200, await this.transcripts.read(session));
           if (method === 'POST' && match[2] === 'send') return json(response, 200, await this.submit(device, session.id, data));
           if (method === 'POST' && match[2] === 'resume') return json(response, 200, session.process ? this.list().find(item => item.id === session.id) : await this.sessions.resume(session.id));
+          if (method === 'POST' && match[2] === 'close') return json(response, 200, await this.closeChat(session.id));
           if (method === 'POST' && match[2] === 'key') {
-            const keys = { enter: '\r', escape: '\x1b', up: '\x1b[A', down: '\x1b[B', tab: '\t', interrupt: '\x03' };
+            const keys = { enter: '\r', escape: '\x1b', up: '\x1b[A', down: '\x1b[B', left: '\x1b[D', right: '\x1b[C', tab: '\t', interrupt: '\x03' };
             if (!Object.hasOwn(keys, data.key)) fail('Unknown terminal key.');
             this.sessions.input(session.id, keys[data.key]); return json(response, 200, { delivered: true });
           }

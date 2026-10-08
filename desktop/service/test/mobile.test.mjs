@@ -23,7 +23,9 @@ async function fixture(t) {
   sessions.snapshot = async () => ({ session, sequence: 1, data: 'hello' });
   sessions.seen = () => {};
   const transport = { probe: async () => ({ installed: true, ready: true }), enable: async origin => ({ origin }), disable: async () => {} };
-  const gateway = await new MobileGateway({ repo, uiDir: path.join(repo, 'ui'), stateDir: repo, sessions, attachments: new Attachments(repo), settings: () => ({ defaultBypass: false }), transport }).init();
+  const closed = [];
+  const closeChat = async value => { assert.equal(value, id); closed.push(value); session.open = false; session.process = null; session.status = 'closed'; sessions.emit('session', session); return { closed: true, savedInHistory: true }; };
+  const gateway = await new MobileGateway({ repo, uiDir: path.join(repo, 'ui'), stateDir: repo, sessions, attachments: new Attachments(repo), closeChat, settings: () => ({ defaultBypass: false }), transport }).init();
   t.after(() => gateway.close()); await gateway.enable();
   const request = async (route, data, cookie, extra = {}) => {
     const response = await fetch(`${gateway.origin}/mobile/api${route}`, { method: data === undefined ? 'GET' : 'POST', headers: { ...(cookie ? { Cookie: cookie } : {}), ...(data === undefined ? {} : { Origin: gateway.origin, 'Content-Type': 'application/json' }), ...extra }, body: data === undefined ? undefined : JSON.stringify(data) });
@@ -35,8 +37,39 @@ async function fixture(t) {
     await gateway.approve(pending.id);
     return { ...(await request('/pair/finish', pending)), pending, token };
   };
-  return { gateway, request, pair, repo, writes, id, session };
+  return { gateway, request, pair, repo, writes, id, session, closed };
 }
+
+test('terminal navigation sends all four arrows only from a paired same-origin phone', async t => {
+  const { request, pair, id, writes, session, gateway } = await fixture(t), device = await pair();
+  const route = `/sessions/${id}/key`;
+  assert.equal((await request(route, { key: 'left' })).status, 401);
+  assert.equal((await request(route, { key: 'right' }, device.cookie, { Origin: 'https://unrelated.example' })).status, 403);
+  assert.deepEqual(writes, []);
+  for (const key of ['left', 'up', 'down', 'right']) assert.equal((await request(route, { key }, device.cookie)).status, 200);
+  assert.deepEqual(writes, ['\x1b[D', '\x1b[A', '\x1b[B', '\x1b[C']);
+  assert.equal((await request(route, { key: '\x1b[C' }, device.cookie)).status, 400);
+  session.agent = 'shell';
+  assert.equal((await request(route, { key: 'left' }, device.cookie)).status, 403);
+  session.agent = 'codex'; await gateway.revoke(device.pending.id);
+  assert.equal((await request(route, { key: 'right' }, device.cookie)).status, 401);
+  assert.equal(writes.length, 4);
+});
+
+test('mobile close uses the shared close action, retains history and rejects untrusted requests', async t => {
+  const { request, pair, id, session, closed } = await fixture(t), device = await pair();
+  const route = `/sessions/${id}/close`;
+  assert.equal((await request(route, {})).status, 401);
+  assert.equal((await request(route, {}, device.cookie, { Origin: 'https://unrelated.example' })).status, 403);
+  assert.equal((await request(route, undefined, device.cookie)).status, 404);
+  session.agent = 'shell'; assert.equal((await request(route, {}, device.cookie)).status, 403);
+  session.agent = 'codex'; assert.deepEqual(closed, []);
+  const response = await request(route, {}, device.cookie);
+  assert.equal(response.status, 200); assert.deepEqual(response.data, { closed: true, savedInHistory: true });
+  assert.deepEqual(closed, [id]);
+  const saved = (await request('/bootstrap', undefined, device.cookie)).data.sessions.find(item => item.id === id);
+  assert.equal(saved.open, false); assert.equal(saved.name, 'Test chat');
+});
 
 test('pairing needs a one-use QR, matching origin, and explicit desktop approval', async t => {
   const { gateway, request, repo } = await fixture(t);

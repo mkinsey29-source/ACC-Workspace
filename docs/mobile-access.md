@@ -36,8 +36,13 @@ between 8443 and 8446. It preserves existing routes and never enables Funnel.
   local history. Tool output stays in the terminal. The view is bounded to the
   recent transcript; native CLI history remains on the computer.
 - **Terminal:** the real CLI screen for any supported agent, with scrolling,
-  copy and buttons for Enter, Escape, arrows, Tab and Stop. Wide lines scroll
+  copy and buttons for Enter, Escape, all four arrows, Tab and Stop. Use left
+  and right to change choices in CLI menus, including reasoning effort. Wide lines scroll
   sideways so opening a phone does not resize the desktop terminal.
+- **Close chat:** use the cross in the chat header and confirm. This also
+  closes its desktop tab and stops that CLI process. The conversation stays
+  in **History**, where you can open it and choose **Resume chat**. Other chats
+  keep running; your unsent phone draft is kept.
 - **Send:** sends a complete prompt to the selected CLI. Enter in the phone's
   text field adds a line break; use Send to submit. Your keyboard's dictation
   works in the same field.
