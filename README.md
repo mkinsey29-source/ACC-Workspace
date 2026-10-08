@@ -33,7 +33,7 @@ subscription-backed CLI chats without an API key.
 
 ## Everyday tools
 
-The upcoming **0.5** source build adds [mobile access](docs/mobile-access.md).
+**Version 0.5** adds [mobile access](docs/mobile-access.md).
 Connect your phone from the phone button in Chats to read conversations, send
 follow-ups and images, dictate a draft, and open Workspace reports while agents run on your
 computer. It uses Tailscale and a mobile web app you can add to your Home Screen.
@@ -95,8 +95,8 @@ open an installed CLI and sign in with your own account.
 The installer includes the local Node service. It does not include Codex,
 Claude Code, OpenCode, Kimi, Blender, Python or provider accounts.
 
-**Already using Mr. Mak?** Read the [0.4.19 update notes](CHANGELOG.md) for
-Talk to Mak image attachments, multiline messages and optional asset manifests.
+**Already using Mr. Mak?** Read the [0.5.0 update notes](CHANGELOG.md) for
+mobile chat access, voice dictation and the Linux AppImage packaging fix.
 Follow the
 [update guide](docs/updating.md) to update the app and add skills to your existing
 repository without replacing your projects.

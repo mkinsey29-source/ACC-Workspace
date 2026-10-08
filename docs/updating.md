@@ -7,9 +7,16 @@ context, credentials or agent conversations.
 ## Application
 
 1. Finish active agent tasks, then choose Quit from Mr. Mak's tray menu.
-2. Install **Mr. Mak Workspace 0.4.19** for Windows x64.
+2. Install **Mr. Mak Workspace 0.5.0** for Windows x64.
 3. Open the same repository you were using before. Your cards, settings and
    History remain in that folder.
+
+Version 0.5.0 adds optional [mobile access](mobile-access.md). After updating,
+use the phone button in Chats to connect your own devices through Tailscale.
+Existing pairings survive application updates. Mobile dictation uses an
+OpenRouter or OpenAI transcription key on the computer; typed messages use
+your existing CLI account. Long links and paths stay within mobile chat cards.
+The Linux AppImage also includes a launcher permission fix.
 
 The History fix can reconnect a Codex conversation whose original native record
 still exists but whose ID was not saved by Mr. Mak. If that native history was
