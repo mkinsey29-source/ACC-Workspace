@@ -1,10 +1,81 @@
 # Mr. Mak Workspace
 
-Your agents do the work. You keep the useful parts in view.
+Your CLI agents, a visual Workspace, and access from your phone.
 
-Mr. Mak gives you two connected windows: real CLI chats on the left, and a
-Workspace for projects, research, images and files. Keep both open, or minimize
-the Workspace while an agent helps you in Blender, a game engine or your browser.
+Mr. Mak has **two connected desktop windows**:
+
+- **Chats** is where you give tasks to Codex, Claude Code or OpenCode. Each
+  conversation runs in a real CLI terminal, with its own tab and saved history.
+- **Workspace** is where you review the results: project pages, research, images,
+  saved prompts and reports. Files, skills, MCP connections and settings sit
+  alongside your work.
+
+Keep the windows side by side, or minimize either one independently. You can
+leave Chats in view while working in Blender, a game engine or your browser.
+
+**New in 0.5: [connect your phone](#on-your-phone)** to follow the same chats,
+send ideas and dictate messages while the agents keep working on your computer.
+
+![The two Mr. Mak windows side by side: CLI chats on the left and the My Dream Game project in Workspace on the right](docs/assets/desktop-chats-workspace.png)
+
+*Chats on the left, Workspace on the right. App views arranged side by side
+with sample conversations and the included My Dream Game project.*
+
+## On your phone
+
+Read replies, send follow-ups or images, and open Workspace reports from a mobile
+web app you can add to your Home Screen. The phone connects to Mr. Mak on your
+computer through **Tailscale**. Your agents keep running on the computer with
+their existing CLI accounts.
+
+<p>
+  <a href="docs/assets/mobile-chats.png"><img src="docs/assets/mobile-chats.png" alt="Mobile Chats: pinned conversations and recent replies from Codex and Claude" width="240"></a>
+  <a href="docs/assets/mobile-conversation.png"><img src="docs/assets/mobile-conversation.png" alt="Mobile conversation: read an agent reply and write a follow-up" width="240"></a>
+  <a href="docs/assets/mobile-voice-input.png"><img src="docs/assets/mobile-voice-input.png" alt="Mobile voice input: record a message, then transcribe it into your draft" width="240"></a>
+</p>
+
+*Your chats, a conversation, and voice input. Tap a screenshot to see it at full
+size. These screenshots use sample conversations.*
+
+- **Pair from Chats.** Press the phone button on your computer, enable mobile
+  access, scan the QR code and confirm the matching code on the desktop.
+- **Pick up where you left off.** Pair once, then reopen the same phone shortcut.
+  Phone and desktop can show different chats while sharing the conversation.
+- **Speak a draft.** Tap the microphone, record your message and stop to
+  transcribe it. Review the text before pressing Send.
+
+Keep the computer awake with Mr. Mak running, and Tailscale connected on both
+devices. The microphone button uses separately billed OpenRouter or OpenAI API
+credit; its key stays on your computer. Typing and your phone keyboard's own
+dictation need no Mr. Mak transcription key.
+
+[Set up mobile access and voice input](docs/mobile-access.md)
+
+## Everyday tools
+
+- **Your files, close at hand.** Browse a folder tree with Main folders or All
+  files, jump to `inbox`, `projects`, `workspace`, `knowledge` and `processes`,
+  and open any folder in Windows Explorer.
+- **Readable notes you can edit.** Open Markdown as a formatted document, switch
+  to Edit, and save changes in the same window. Preview images, video and audio
+  alongside the file tree.
+- **Choose a reading theme.** Settings > Appearance offers Dark, Light and
+  System. Light uses dark text on white across Workspace and standard reports.
+  Images keep their original colors; terminal appearance is set separately.
+- **Chats you can return to.** Pin conversations in history, reorder and color
+  tabs, and see which agents are working or have a reply you have not viewed.
+  Drop files or folders into a chat to insert their paths; clipboard images are
+  saved in `inbox/attachments`.
+- **Projects with their work attached.** Keep research, design versions, saved
+  prompts and motion tests in tabs inside a card. Open images at full size and
+  download them from the preview.
+- **Skills and tools within reach.** The right rail opens project skills,
+  knowledge, workflows, MCP connections, Settings and Help. See which MCP
+  connections come from the project and which come from your agent's global setup.
+
+![Workspace with the My Dream Game project open and the Files tree showing project knowledge and workflows](docs/assets/workspace-files.png)
+
+## Before you start
 
 **Prerequisite: install and configure Codex CLI, Claude Code CLI or OpenCode
 before setting up Mr. Mak.** You need at least one. They can run side by side
@@ -28,44 +99,6 @@ Code subscription into OpenCode API access. Choose **+ > OpenCode** in Chats.
 The optional voice coordinator specifically requires **Codex CLI** and your own
 **OpenAI API key**. Voice API usage is billed separately. Leave voice off to use
 subscription-backed CLI chats without an API key.
-
-![Mr. Mak Workspace home with project cards and the Files tree open](docs/assets/workspace-overview.png)
-
-## Everyday tools
-
-**Version 0.5** adds [mobile access](docs/mobile-access.md).
-Connect your phone from the phone button in Chats to read conversations, send
-follow-ups and images, dictate a draft, and open Workspace reports while agents run on your
-computer. It uses Tailscale and a mobile web app you can add to your Home Screen.
-Pair once, then reopen the same shortcut to reconnect. The computer must stay
-awake with Mr. Mak running. Phone and desktop can show different chats.
-
-The mobile **microphone button** records a voice note, transcribes it, and adds
-the text to your draft. Review it before pressing Send. This optional feature
-uses OpenRouter or OpenAI API credit with a key stored on your computer;
-typing and your phone keyboard's dictation need no Mr. Mak transcription key.
-See [mobile setup and voice input](docs/mobile-access.md) for connection,
-startup and microphone instructions.
-
-- **Your files, close at hand.** Browse a folder tree with Main folders or All
-  files, jump to `inbox`, `projects`, `workspace`, `knowledge` and `processes`,
-  and open any folder in Windows Explorer.
-- **Readable notes you can edit.** Open Markdown as a formatted document, switch
-  to Edit, and save changes in the same window. Preview images, video and audio
-  alongside the file tree.
-- **Choose a reading theme.** Settings > Appearance offers Dark, Light and
-  System. Light uses dark text on white across Workspace and standard reports.
-  Images keep their original colors; terminal appearance is set separately.
-- **Chats you can return to.** Pin conversations in history, reorder and color
-  tabs, and see which agents are working or have a reply you have not viewed.
-  Drop files or folders into a chat to insert their paths; clipboard images are
-  saved in `inbox/attachments`.
-- **Projects with their work attached.** Keep research, design versions, saved
-  prompts and motion tests in tabs inside a card. Open images at full size and
-  download them from the preview.
-- **Skills and tools within reach.** The right rail opens project skills,
-  knowledge, workflows, MCP connections, Settings and Help. See which MCP
-  connections come from the project and which come from your agent's global setup.
 
 ## Start with an agent
 
