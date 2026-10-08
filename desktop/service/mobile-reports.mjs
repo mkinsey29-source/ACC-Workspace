@@ -17,7 +17,7 @@ export class MobileReports {
     const entity = (await this.registry()).find(item => item.id === entityId);
     if (!entity || !safePath(entity.folder) || !Number.isInteger(step) || !safePath(entity.steps?.[step]?.path)) fail('This report is unavailable on mobile.', 404);
     const root = await realpath(path.join(this.gateway.repo, 'workspace', entity.folder));
-    if (!within(this.gateway.repo, root)) fail('This report folder is outside the Workspace repository.');
+    if (!within(await realpath(this.gateway.repo), root)) fail('This report folder is outside the Workspace repository.');
     const relative = entity.steps[step].path, { file, info } = await realFile(root, relative);
     if (!info.isFile()) fail('Report not found', 404);
     const extension = path.extname(file).toLowerCase();

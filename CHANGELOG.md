@@ -2,6 +2,7 @@
 
 ## 0.5.0 - 2026-10-09
 
+- Resolve Windows short paths and linked repository roots before checking mobile report boundaries; external folders remain blocked.
 - Keep mobile chat cards within the screen when previews contain long links or file paths; prevent sideways drift of the chat list.
 - Dictate mobile messages with a microphone button, review the transcript before sending, and recover or download recordings after a failed transcription. Optional OpenRouter/OpenAI transcription uses keys on the computer.
 - Allow QR scanners to open the mobile connection page, while keeping cross-site API requests, embedded pages and sockets blocked.

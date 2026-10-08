@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { WebSocket } from 'ws';
@@ -160,6 +160,27 @@ test('report grants are limited to the selected folder, sandboxed and revoked wi
   const download = await fetch(url.replace('report.html', 'picture.svg?download=1'));
   assert.equal(download.status, 200); assert.match(download.headers.get('content-disposition'), /^attachment;/);
   await gateway.revoke(device.pending.id); assert.equal((await fetch(url)).status, 401);
+});
+
+test('report boundaries resolve a linked repository and still reject external folders', async t => {
+  const { gateway, pair, request, repo } = await fixture(t), device = await pair();
+  await mkdir(path.join(repo, 'workspace/example'), { recursive: true });
+  await writeFile(path.join(repo, 'workspace/example/report.html'), '<h1>Linked workspace</h1>');
+  const outside = await mkdtemp(path.join(os.tmpdir(), 'mrmak-mobile-outside-'));
+  await writeFile(path.join(outside, 'private.html'), 'Outside the workspace');
+  await symlink(outside, path.join(repo, 'workspace/external'), process.platform === 'win32' ? 'junction' : 'dir');
+  await writeFile(path.join(repo, 'workspace/workspace.json'), JSON.stringify({ entities: [
+    { id: 'example', title: 'Example', folder: 'example', steps: [{ name: 'Report', path: 'report.html' }] },
+    { id: 'external', title: 'External', folder: 'external', steps: [{ name: 'Private', path: 'private.html' }] },
+  ] }));
+  const aliasParent = await mkdtemp(path.join(os.tmpdir(), 'mrmak-mobile-alias-'));
+  const alias = path.join(aliasParent, 'workspace');
+  await symlink(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  gateway.repo = alias;
+  const opened = await request('/reports/open', { entityId: 'example' }, device.cookie);
+  assert.equal(opened.status, 200);
+  assert.equal((await fetch(`${gateway.origin}${opened.data.url}`)).status, 200);
+  assert.equal((await request('/reports/open', { entityId: 'external' }, device.cookie)).status, 403);
 });
 
 test('delivery receipts and device pairing survive a service restart', async t => {
