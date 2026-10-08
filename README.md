@@ -28,14 +28,10 @@ web app you can add to your Home Screen. The phone connects to Mr. Mak on your
 computer through **Tailscale**. Your agents keep running on the computer with
 their existing CLI accounts.
 
-<p>
-  <a href="docs/assets/mobile-chats.png"><img src="docs/assets/mobile-chats.png" alt="Mobile Chats: pinned conversations and recent replies from Codex and Claude" width="240"></a>
-  <a href="docs/assets/mobile-conversation.png"><img src="docs/assets/mobile-conversation.png" alt="Mobile conversation: read an agent reply and write a follow-up" width="240"></a>
-  <a href="docs/assets/mobile-voice-input.png"><img src="docs/assets/mobile-voice-input.png" alt="Mobile voice input: record a message, then transcribe it into your draft" width="240"></a>
-</p>
+<a href="docs/assets/mobile-overview.png"><img src="docs/assets/mobile-overview.png" alt="Mr. Mak on a phone: chat list, conversation and voice input side by side" width="720"></a>
 
-*Your chats, a conversation, and voice input. Tap a screenshot to see it at full
-size. These screenshots use sample conversations.*
+*Your chats, a conversation, and voice input in one overview. Tap the image
+to see it at full size. Sample conversations shown.*
 
 - **Pair from Chats.** Press the phone button on your computer, enable mobile
   access, scan the QR code and confirm the matching code on the desktop.
