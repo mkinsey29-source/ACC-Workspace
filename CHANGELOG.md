@@ -2,6 +2,7 @@
 
 ## 0.5.0 (unreleased)
 
+- Prepare Linux AppImages with a readable/executable launcher, verify final package permissions and run the bundled Node as a different user before upload. Pin Ubuntu 22.04 for a stable glibc baseline and remove the redundant Linux suffix from AppImage filenames.
 - Connect a phone from Chats with a private Tailscale route, a short-lived QR code and desktop approval. View and revoke paired devices in the same panel.
 - Read Codex and Claude conversations, use a live terminal view for supported agents, and send messages or images from a mobile web app. Desktop and phone selections stay independent.
 - Keep drafts per chat and recover deliveries with persisted message receipts. Opening a phone never changes desktop terminal dimensions.

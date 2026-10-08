@@ -21,7 +21,8 @@ env:
 jobs:
   linux:
     name: Linux binary and AppImage
-    runs-on: ubuntu-latest
+    # Keep the glibc baseline stable instead of inheriting newer runner images.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,14 +47,24 @@ jobs:
           version="${RELEASE_VERSION#v}"
           jq -n --arg version "${version}" '{version: $version}' > src-tauri/release-config.json
 
+      - name: Prepare AppImage launcher permissions
+        run: node scripts/prepare-appimage.mjs
+
       - name: Build AppImage and binary
         run: npm exec -- tauri build --ci --bundles appimage --config src-tauri/release-config.json
+
+      - name: Check final AppImage permissions and bundled runtime
+        run: |
+          shopt -s nullglob
+          images=(src-tauri/target/release/bundle/appimage/*.AppImage)
+          [ "${#images[@]}" -eq 1 ] || { echo "Expected one AppImage" >&2; exit 1; }
+          python3 scripts/check-appimage.py "${images[0]}"
 
       - name: Stage Linux assets
         run: |
           mkdir -p release-assets
           cp src-tauri/target/release/mrmak-workspace "release-assets/Mr-Mak-Workspace-${RELEASE_TAG}-linux-x86_64"
-          cp src-tauri/target/release/bundle/appimage/*.AppImage "release-assets/Mr-Mak-Workspace-${RELEASE_TAG}-linux-x86_64.AppImage"
+          cp src-tauri/target/release/bundle/appimage/*.AppImage "release-assets/Mr-Mak-Workspace-${RELEASE_TAG}-x86_64.AppImage"
           file release-assets/*
 
       - uses: actions/upload-artifact@v4
