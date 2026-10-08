@@ -2,6 +2,7 @@
 
 ## 0.5.0 (unreleased)
 
+- Keep mobile chat cards within the screen when previews contain long links or file paths; prevent sideways drift of the chat list.
 - Dictate mobile messages with a microphone button, review the transcript before sending, and recover or download recordings after a failed transcription. Optional OpenRouter/OpenAI transcription uses keys on the computer.
 - Allow QR scanners to open the mobile connection page, while keeping cross-site API requests, embedded pages and sockets blocked.
 - Prepare Linux AppImages with a readable/executable launcher, verify final package permissions and run the bundled Node as a different user before upload. Pin Ubuntu 22.04 for a stable glibc baseline and remove the redundant Linux suffix from AppImage filenames.

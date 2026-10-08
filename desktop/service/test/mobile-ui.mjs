@@ -37,6 +37,7 @@ for (const [index, id] of ids.entries()) {
   const session = service.sessions.make({ id, name: index ? 'Research ideas' : 'Game animations', agent: index ? 'claude' : 'codex', status: 'running', open: true, pinned: !index, cols: 100, rows: 28, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cwd: repo });
   session.process = { write: data => writes.push({ id, data }), resize: () => {} };
   service.sessions.items.set(id, session); await service.sessions.hydrate(session);
+  session.preview = 'Latest notes: [Review the animation](C:/Projects/game/characters/' + 'very-long-character-name-'.repeat(12) + '/review.html) and https://example.com/research/' + 'reference'.repeat(40);
   await new Promise(resolve => session.terminal.write(Array.from({ length: 90 }, (_, line) => `Line ${line + 1}: live agent output\r\n`).join(''), resolve));
 }
 service.mobile.transcripts.read = async session => ({ supported: true, messages: [
@@ -85,6 +86,16 @@ try {
   await desktop.getByRole('button', { name: 'Connect phone', exact: true }).click();
   await phone.getByRole('heading', { name: 'Your chats', exact: true }).waitFor();
   await desktop.getByText('Connected now', { exact: true }).waitFor();
+  for (const width of [320, 360, 393, 430, 768]) {
+    await phone.setViewportSize({ width, height: 844 });
+    const layout = await phone.evaluate(() => {
+      const selectors = ['.mobile-chat-list', '.mobile-chat-cards', '.mobile-chat-card', '.mobile-list-title', '.mobile-search', '.mobile-list-tabs'];
+      return [...document.querySelectorAll(selectors.join(','))].map(node => ({ selector: node.className, left: node.getBoundingClientRect().left, right: node.getBoundingClientRect().right, client: node.clientWidth, scroll: node.scrollWidth }));
+    });
+    await phone.screenshot({ path: path.join(repo, `phone-chats-${width}.png`) });
+    assert.deepEqual(layout.filter(box => box.left < -1 || box.right > width + 1 || box.scroll > box.client + 1), [], `Chat list stays in bounds at ${width}px: ${JSON.stringify(layout)}`);
+  }
+  await phone.setViewportSize({ width: 390, height: 844 });
   await phone.screenshot({ path: path.join(repo, 'phone-chats.png') });
   const dimensions = ids.map(id => ({ cols: service.sessions.get(id).cols, rows: service.sessions.get(id).rows }));
   const desktopSelected = (await (await fetch(`${service.origin}/api/bootstrap`, { headers: { Authorization: `Bearer ${service.token}` } })).json()).selectedId;
@@ -187,7 +198,7 @@ try {
   await phone.getByRole('heading', { name: 'Start in Mr. Mak Chats' }).waitFor();
   assert.equal(service.sessions.get(ids[0]).status, 'running'); assert.equal(service.sessions.get(ids[1]).status, 'running');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, fixture: repo, checks: ['QR + desktop approval', 'independent views and PTY sizes', 'microphone permission / record / stop / cancel', 'dictation never auto-sends', 'saved recording recovery after reload and chat switch', 'lost transcription reply reuses provider result', 'lost reply / retry once', 'drafts per chat', 'offline recovery', 'image attachment', 'sandboxed report + image download', 'Markdown preview', '360/390/768px layout', 'device revocation'] }));
+  console.log(JSON.stringify({ ok: true, fixture: repo, checks: ['QR + desktop approval', 'independent views and PTY sizes', 'microphone permission / record / stop / cancel', 'dictation never auto-sends', 'saved recording recovery after reload and chat switch', 'lost transcription reply reuses provider result', 'lost reply / retry once', 'drafts per chat', 'offline recovery', 'image attachment', 'sandboxed report + image download', 'Markdown preview', 'long-link chat cards at 320/360/393/430/768px', '360/390/768px report layout', 'device revocation'] }));
 } finally {
   if (qrSource) await new Promise(resolve => qrSource.close(resolve));
   await browser?.close(); for (const session of service.sessions.items.values()) session.process = null;
