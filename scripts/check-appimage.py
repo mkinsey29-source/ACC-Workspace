@@ -1,6 +1,6 @@
 """Verify modes in the FINAL AppImage, including execution by a non-owner.
 
-CI requires Linux, sudo and its existing nobody account. This is a package
+CI requires Linux, squashfs-tools, sudo and its existing nobody account. This is a package
 check, not a substitute for checking the graphical app on a real Linux desktop.
 """
 import argparse
@@ -17,16 +17,22 @@ def check(image: Path) -> None:
     with tempfile.TemporaryDirectory(prefix='mrmak-appimage-') as temporary:
         directory = Path(temporary)
         directory.chmod(0o755)  # The non-owner must be able to traverse /tmp.
-        subprocess.run([str(image), '--appimage-extract'], cwd=directory,
-                       stdout=subprocess.DEVNULL, check=True)
         root = directory / 'squashfs-root'
+        # The runtime's --appimage-extract creates directories as 0700 rather
+        # than preserving their archived modes. Unsquashfs restores the actual
+        # package metadata, so this audit does not mistake extraction for damage.
+        offset = int(subprocess.check_output([str(image), '--appimage-offset'], text=True).strip())
+        if offset <= 0 or offset >= image.stat().st_size:
+            raise RuntimeError('Invalid AppImage filesystem offset')
+        subprocess.run(['unsquashfs', '-no-progress', '-offset', str(offset),
+                        '-d', str(root), str(image)], stdout=subprocess.DEVNULL, check=True)
         failures = []
         for parent, dirs, files in os.walk(root):
             for item in [Path(parent), *(Path(parent) / name for name in dirs + files)]:
                 if item.is_symlink():
                     continue
                 mode = stat.S_IMODE(item.stat().st_mode)
-                required = 0o5 if item.is_dir() or mode & 0o111 else 0o4
+                required = 0o5 if item.is_dir() else 0o4
                 if mode & required != required:
                     failures.append(f'{item.relative_to(root)}: {mode:04o}')
         nodes = [p for p in root.rglob('node') if p.is_file() and 'runtime' in p.relative_to(root).parts]
