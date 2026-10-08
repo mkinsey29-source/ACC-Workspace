@@ -2,6 +2,7 @@
 // No personal conversations, paid requests or Tailscale configuration are touched.
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { cp, copyFile, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +37,7 @@ service.mobile.transcripts.read = async session => ({ supported: true, messages:
   { id: 'user', role: 'user', text: 'Can we make the next iteration easier to review?', at: new Date().toISOString() },
   { id: 'assistant', role: 'assistant', text: '## Ready for review\n\nThe latest results are in your Workspace.\n\n- **Character:** proportions updated\n- **Motion:** timing checked\n- **Next step:** choose the version you prefer\n\n[Open the source](https://example.com/source)\n\n' + (session.id === ids[0] ? 'Your agent is still working on the computer.' : 'Send a follow-up whenever an idea comes to mind.'), at: new Date().toISOString() },
 ] });
-let browser;
+let browser, qrSource;
 try {
   browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge' });
   const desktop = await browser.newPage({ viewport: { width: 640, height: 860 } }); desktop.setDefaultTimeout(12000);
@@ -55,7 +56,17 @@ try {
   await desktop.screenshot({ path: path.join(repo, 'desktop-pairing.png') });
   const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   const phone = await mobileContext.newPage(); phone.setDefaultTimeout(12000); phone.on('pageerror', error => errors.push(error.message));
-  await phone.goto(pairing.url); await phone.getByRole('button', { name: 'Request connection' }).click();
+  // Open from another site like a QR scanner, rather than an address-bar visit.
+  qrSource = http.createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end(`<a href="${pairing.url}">Open Mr. Mak</a>`);
+  });
+  await new Promise(resolve => qrSource.listen(0, 'localhost', resolve));
+  await phone.goto(`http://localhost:${qrSource.address().port}`);
+  const navigationRequest = phone.waitForRequest(request => request.url().startsWith(`${service.mobile.origin}/mobile/`) && request.isNavigationRequest());
+  await phone.getByRole('link', { name: 'Open Mr. Mak' }).click();
+  assert.equal(await (await navigationRequest).headerValue('sec-fetch-site'), 'cross-site');
+  await phone.getByRole('button', { name: 'Request connection' }).click();
   await phone.getByRole('heading', { name: 'Confirm on your computer' }).waitFor();
   await desktop.getByRole('button', { name: 'Connect phone', exact: true }).click();
   await phone.getByRole('heading', { name: 'Your chats', exact: true }).waitFor();
@@ -119,6 +130,7 @@ try {
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ ok: true, fixture: repo, checks: ['QR + desktop approval', 'independent views and PTY sizes', 'lost reply / retry once', 'drafts per chat', 'offline recovery', 'image attachment', 'sandboxed report + image download', 'Markdown preview', '360/390/768px layout', 'device revocation'] }));
 } finally {
+  if (qrSource) await new Promise(resolve => qrSource.close(resolve));
   await browser?.close(); for (const session of service.sessions.items.values()) session.process = null;
   await service.close();
 }

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
@@ -55,6 +56,40 @@ test('pairing needs a one-use QR, matching origin, and explicit desktop approval
   assert.ok(!JSON.stringify(gateway.status()).includes('hash'));
   await gateway.revoke(claim.data.id);
   assert.equal((await request('/bootstrap', undefined, finish.cookie)).status, 401);
+});
+
+test('QR navigation opens only the app shell; cross-site APIs, frames and sockets remain blocked', async t => {
+  const { gateway, pair, request } = await fixture(t);
+  const device = await pair();
+  const navigation = { 'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' };
+  const get = (pathname, headers = navigation, method = 'GET') => new Promise((resolve, reject) => {
+    const req = http.request(gateway.origin + pathname, { method, headers }, res => {
+      let body = ''; res.setEncoding('utf8'); res.on('data', chunk => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
+    });
+    req.on('error', reject); req.end();
+  });
+  for (const pathname of ['/mobile/', '/mobile', '/mobile/?source=qr']) {
+    const shell = await get(pathname);
+    assert.equal(shell.status, 200); assert.match(shell.body, /Mobile fixture/);
+    assert.equal(shell.headers['x-frame-options'], 'DENY');
+  }
+  for (const headers of [
+    { ...navigation, 'Sec-Fetch-Dest': 'iframe' },
+    { ...navigation, 'Sec-Fetch-Mode': 'cors' },
+    { ...navigation, Origin: 'https://unrelated.example' },
+    { ...navigation, Host: 'unrelated.example' },
+  ]) assert.equal((await get('/mobile/', headers)).status, 403);
+  assert.equal((await get('/mobile/', { ...navigation, Origin: gateway.origin }, 'POST')).status, 403);
+  // Even a paired phone's cookie cannot turn cross-site requests into API access.
+  for (const pathname of ['/mobile/api/bootstrap', '/mobile/events', '/mobile/manifest.webmanifest', '/assets/app.js']) {
+    assert.equal((await get(pathname, { ...navigation, Cookie: device.cookie })).status, 403);
+  }
+  const qr = await gateway.newPairing();
+  assert.equal((await request('/pair', { token: qr.code }, undefined, { 'Sec-Fetch-Site': 'cross-site' })).status, 403);
+  assert.equal((await request('/pair', { token: qr.code })).status, 200);
+  const ws = new WebSocket(`${gateway.origin.replace('http:', 'ws:')}/mobile/events`, { headers: { Origin: gateway.origin, Cookie: device.cookie, ...navigation } });
+  await new Promise((resolve, reject) => { ws.once('error', resolve); ws.once('open', () => { ws.terminate(); reject(new Error('Cross-site socket was accepted')); }); });
 });
 
 test('retries and parallel requests write one prompt; changed payload cannot reuse an ID', async t => {

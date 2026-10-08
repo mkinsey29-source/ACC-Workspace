@@ -147,7 +147,14 @@ export class MobileGateway {
     if (!this.active) fail('Mobile access is off. Enable it in Mr. Mak Chats.', 503);
     if (request.headers.host !== new URL(this.origin).host) fail('Unexpected host', 403);
     if ((mutation || request.headers.origin) && request.headers.origin !== this.origin) fail('Unexpected origin', 403);
-    if (request.headers['sec-fetch-site'] === 'cross-site') fail('Cross-site requests are not allowed', 403);
+    // QR scanners can open the public app shell as a cross-site navigation.
+    // This exception never applies to API calls, embedded pages or WebSockets.
+    const pathname = new URL(request.url, this.origin).pathname;
+    const shellNavigation = !mutation && request.method === 'GET'
+      && (pathname === '/mobile/' || pathname === '/mobile')
+      && request.headers['sec-fetch-mode'] === 'navigate'
+      && request.headers['sec-fetch-dest'] === 'document';
+    if (request.headers['sec-fetch-site'] === 'cross-site' && !shellNavigation) fail('Cross-site requests are not allowed', 403);
   }
   session(id) {
     const session = this.sessions.get(id);
