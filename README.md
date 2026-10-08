@@ -35,8 +35,17 @@ subscription-backed CLI chats without an API key.
 
 The upcoming **0.5** source build adds [mobile access](docs/mobile-access.md).
 Connect your phone from the phone button in Chats to read conversations, send
-follow-ups and images, and open Workspace reports while agents run on your
+follow-ups and images, dictate a draft, and open Workspace reports while agents run on your
 computer. It uses Tailscale and a mobile web app you can add to your Home Screen.
+Pair once, then reopen the same shortcut to reconnect. The computer must stay
+awake with Mr. Mak running. Phone and desktop can show different chats.
+
+The mobile **microphone button** records a voice note, transcribes it, and adds
+the text to your draft. Review it before pressing Send. This optional feature
+uses OpenRouter or OpenAI API credit with a key stored on your computer;
+typing and your phone keyboard's dictation need no Mr. Mak transcription key.
+See [mobile setup and voice input](docs/mobile-access.md) for connection,
+startup and microphone instructions.
 
 - **Your files, close at hand.** Browse a folder tree with Main folders or All
   files, jump to `inbox`, `projects`, `workspace`, `knowledge` and `processes`,

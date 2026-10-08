@@ -2,7 +2,7 @@
 
 Mobile access connects a phone to the agent chats running in Mr. Mak Desktop.
 The computer keeps the CLI processes, their sign-ins and project files. The
-phone can read conversations, send messages and images, resume a saved chat,
+phone can read conversations, dictate drafts, send messages and images, resume a saved chat,
 start an installed agent, and read Workspace reports.
 
 ## First connection
@@ -14,15 +14,18 @@ start an installed agent, and read Workspace reports.
    follow its [Serve setup](https://tailscale.com/docs/features/tailscale-serve)
    and try again. On Windows, Tailscale may require administrator permission
    to configure Serve. You do not need to run agent chats as administrator.
-4. Scan the QR code with your phone. Name the device and request a connection.
+4. Open your phone camera or QR scanner and point it at the code on the computer
+   screen. Tap the detected link to open your browser. Name the device and
+   select **Request connection**.
 5. Compare the six-digit confirmation code on both screens, then choose
    **Connect phone** in Chats. A QR code alone does not grant access.
 6. Add the page to your Home Screen through your browser. If the installed
    web app asks to connect again, enter the eight-digit connection code shown
    under a fresh desktop QR code and confirm it on the computer.
 
-Every owner connects their own devices. No shared Mr. Mak server, public domain
-or new model API key is required. Existing CLI account limits still apply.
+Every owner connects their own devices. Typed chat access needs no shared Mr. Mak
+server, public domain or new model API key. Existing CLI account limits still apply.
+The optional microphone button uses a separately billed transcription API.
 Mr. Mak configures a private Tailscale Serve route on an available HTTPS port
 between 8443 and 8446. It preserves existing routes and never enables Funnel.
 
@@ -38,6 +41,8 @@ between 8443 and 8446. It preserves existing routes and never enables Funnel.
 - **Send:** sends a complete prompt to the selected CLI. Enter in the phone's
   text field adds a line break; use Send to submit. Your keyboard's dictation
   works in the same field.
+- **Microphone:** record a thought, tap Stop, then review the transcription in
+  your draft. It does not send a message or start an agent task automatically.
 - **Attach images:** uploads an image to the computer's `inbox/attachments`
   and inserts its path with the message. Other file types and a full remote
   file manager are not part of this version.
@@ -50,11 +55,65 @@ Selecting a tab, scrolling or opening a report on the phone does not select a
 different tab on the desktop. Conversation contents and task activity are shared.
 Reading a completed turn marks it seen across devices.
 
+## Voice input
+
+1. On the computer, add `OPENROUTER_API_KEY` or `OPENAI_API_KEY` to your
+   repository's ignored `.env`. Existing configured keys can be reused.
+2. Open a chat on the phone and tap the microphone beside the attachment button.
+   Allow microphone access when your browser asks. Use the private HTTPS page
+   in a browser that supports recording, such as current Chrome or Safari.
+3. Speak, then tap **Stop**. Each recording is limited to two minutes.
+4. Review or edit the text, then press **Send** yourself.
+
+The computer submits the audio to the selected provider. API keys stay on the
+computer. This is paid speech-to-text, separate from CLI subscriptions and the
+desktop Talk to Mak coordinator. The standard model is GPT-4o Transcribe;
+speech stays in its original language, including mixed-language dictation.
+
+OpenRouter is selected when its key is configured; otherwise OpenAI is used.
+There is no automatic provider switch after a failed request. Optional `.env`
+settings let you choose explicitly:
+
+```dotenv
+MRMAK_TRANSCRIBE_PROVIDER=openrouter
+MRMAK_TRANSCRIBE_MODEL=openai/gpt-4o-transcribe
+```
+
+For direct OpenAI, use `openai` and `gpt-4o-transcribe`. Set the provider to
+`off` to disable this microphone feature. `OPENROUTER_KEY` and `OPENAI_KEY` are
+also accepted as legacy key names. Reopen the mobile page after changing keys
+or settings; the desktop reads them without a restart.
+
+Stopped recordings are saved on the phone until transcription succeeds or you
+choose **Discard recording**. If transcription fails, use **Transcribe
+recording** to retry, or **Download audio** to keep a copy. Switching chats or
+putting the page in the background stops the microphone and retains the
+unfinished recording in its original chat. Clearing browser data removes local
+drafts and recordings. If the browser cannot save audio, keep the page open and
+download it before leaving.
+
+Retries reuse a successful transcription for up to ten minutes while the desktop
+service stays running and its bounded cache retains it. After a desktop restart
+or cache expiry, retrying may make another billable API call. Audio is not saved
+as a file on the computer; pending audio stays in the phone's browser storage.
+Your phone keyboard's microphone remains an alternative without configuring
+Mr. Mak's transcription service.
+
 ## Connections and delivery
 
 Keep the computer awake, online and running Mr. Mak. Minimizing or hiding its
 windows is fine. Quitting Mr. Mak or letting the computer sleep makes it
 unavailable; closing the phone does not stop agents.
+
+After a restart, open Mr. Mak on the computer and the same mobile shortcut on
+the phone. The saved pairing is reused. Tailscale must be connected on both
+devices; opening Mr. Mak restores its private route. If Tailscale was not ready
+when Mr. Mak started, enable mobile access again from the phone panel in Chats.
+Mr. Mak does not add itself to operating-system startup automatically.
+On Android, use the system's Always-on VPN option for Tailscale if you want it
+to start with the phone; some devices also need background autostart permission.
+See [Android VPN settings](https://developer.android.com/develop/connectivity/vpn#always-on)
+and [Tailscale on Windows](https://tailscale.com/docs/how-to/run-unattended).
 
 Drafts stay on the phone per chat. After a lost connection, **Retry** checks the
 same message ID. The computer keeps a delivery receipt before writing to the

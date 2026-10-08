@@ -11,6 +11,7 @@ import { inventory } from './agents.mjs';
 import { TailscaleTransport } from './mobile-tailscale.mjs';
 import { MobileTranscripts } from './mobile-transcript.mjs';
 import { MobileReports } from './mobile-reports.mjs';
+import { MobileDictation } from './mobile-dictation.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -21,12 +22,13 @@ const DEVICE_TTL = 180 * 24 * 60 * 60 * 1000;
 const send = (ws, value) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(value)); };
 
 export class MobileGateway {
-  constructor({ repo, uiDir, stateDir, sessions, attachments, settings, changed, transport = new TailscaleTransport() }) {
+  constructor({ repo, uiDir, stateDir, sessions, attachments, settings, changed, transport = new TailscaleTransport(), dictation = new MobileDictation(repo) }) {
     Object.assign(this, { repo, uiDir, sessions, attachments, settings, changed, transport });
     this.file = path.join(stateDir, 'mobile-access.json');
     this.saves = Promise.resolve(); this.pending = new Map(); this.clients = new Set(); this.inflight = new Map(); this.uploads = new Map(); this.queues = new Map();
     this.transcripts = new MobileTranscripts(); this.active = false; this.error = ''; this.origin = ''; this.rate = { at: Date.now(), count: 0 };
     this.reports = new MobileReports(this);
+    this.dictation = dictation;
   }
   async init() {
     this.state = { enabled: false, devices: [], receipts: [], ...await readJson(this.file, {}) };
@@ -129,6 +131,7 @@ export class MobileGateway {
     this.notify(); return this.status();
   }
   async revoke(id) {
+    this.dictation.revoke(id);
     this.pending.delete(id); this.state.devices = this.state.devices.filter(item => item.id !== id);
     for (const ws of this.clients) if (ws.deviceId === id) ws.close(1008, 'Device disconnected');
     await this.save(); this.notify(); return this.status();
@@ -240,8 +243,9 @@ export class MobileGateway {
       this.checkRequest(request, mutation);
       const url = new URL(request.url, this.origin), route = url.pathname, method = request.method;
       if (route.startsWith('/mobile/api/')) {
-        if (mutation && route !== '/mobile/api/images' && !String(request.headers['content-type'] || '').startsWith('application/json')) fail('JSON is required', 415);
-        const data = mutation && route !== '/mobile/api/images' ? await body(request, 256 * 1024) : {};
+        const binary = route === '/mobile/api/images' || route === '/mobile/api/transcribe';
+        if (mutation && !binary && !String(request.headers['content-type'] || '').startsWith('application/json')) fail('JSON is required', 415);
+        const data = mutation && !binary ? await body(request, 256 * 1024) : {};
         if (method === 'POST' && route === '/mobile/api/pair') return json(response, 200, this.claim(data));
         if (method === 'POST' && route === '/mobile/api/pair/finish') {
           this.rateLimit();
@@ -252,9 +256,10 @@ export class MobileGateway {
           return json(response, 200, { status: 'connected' });
         }
         const device = this.device(request);
+        if (method === 'POST' && route === '/mobile/api/transcribe') return json(response, 200, await this.dictation.transcribe(request, device.id, () => this.active && this.state.devices.some(item => item.id === device.id && item.expires > Date.now())));
         if (method === 'GET' && route === '/mobile/api/reports') return json(response, 200, await this.reports.list());
         if (method === 'POST' && route === '/mobile/api/reports/open') return json(response, 200, await this.reports.open(device, data));
-        if (method === 'GET' && route === '/mobile/api/bootstrap') return json(response, 200, { sessions: this.list(), agents: inventory().filter(item => item.id !== 'shell'), device: { id: device.id, name: device.name }, defaultAgent: this.settings().defaultAgent, defaultBypass: this.settings().defaultBypass });
+        if (method === 'GET' && route === '/mobile/api/bootstrap') return json(response, 200, { sessions: this.list(), agents: inventory().filter(item => item.id !== 'shell'), device: { id: device.id, name: device.name }, defaultAgent: this.settings().defaultAgent, defaultBypass: this.settings().defaultBypass, dictation: await this.dictation.status() });
         if (method === 'POST' && route === '/mobile/api/disconnect') { await this.revoke(device.id); response.setHeader('Set-Cookie', this.cookie('', true)); return json(response, 200, { disconnected: true }); }
         if (method === 'POST' && route === '/mobile/api/images') {
           if (this.uploads.size >= 150) fail('Too many pending images. Try again later.', 429);
@@ -303,6 +308,7 @@ export class MobileGateway {
   }
   async close() {
     if (this.closed) return; this.closed = true;
+    this.dictation.close();
     this.active = false; clearInterval(this.timer);
     for (const [event, handler] of Object.entries(this.handlers)) this.sessions.off(event, handler);
     for (const ws of this.clients) ws.terminate(); this.wss.close();

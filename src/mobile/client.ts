@@ -1,10 +1,14 @@
 import { useSyncExternalStore } from 'react'
 import type { AgentInfo, ChatSession } from '../desktop/types'
+import { clearVoiceDrafts, type VoiceDraft } from './voice-drafts'
+
+export interface DictationInfo { available: boolean; provider: string | null; maxSeconds: number; maxBytes: number }
 
 interface MobileState {
   ready: boolean; authenticated: boolean; connected: boolean; error: string
   sessions: ChatSession[]; agents: AgentInfo[]; selectedId: string | null
   device?: { id: string; name: string }; defaultAgent?: string; defaultBypass?: boolean
+  dictation?: DictationInfo
 }
 export interface MobileEvent { type: string; id?: string; session?: ChatSession; sessions?: ChatSession[]; data?: string; sequence?: number; error?: string }
 let state: MobileState = { ready: false, authenticated: false, connected: false, error: '', sessions: [], agents: [], selectedId: localStorage.getItem('mrmak.mobile.selected') }
@@ -28,6 +32,12 @@ export async function uploadMobileImage(file: File): Promise<{ id: string; name:
   if (!response.ok) throw new Error(result.error || 'Image upload failed.')
   return result
 }
+export async function transcribeMobileAudio(recording: VoiceDraft, signal: AbortSignal): Promise<{ text: string }> {
+  const response = await fetch('/mobile/api/transcribe', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': recording.audio.type, 'X-Transcription-Id': recording.id }, body: recording.audio, signal: AbortSignal.any([signal, AbortSignal.timeout(90000)]) })
+  const result = await response.json()
+  if (!response.ok) throw new MobileError(result.error || 'Could not transcribe this recording. Try again.', response.status)
+  return result
+}
 export function selectMobileChat(id: string) { localStorage.setItem('mrmak.mobile.selected', id); update({ selectedId: id }) }
 export function onMobileEvent(listener: (event: MobileEvent) => void) { events.add(listener); return () => { events.delete(listener) } }
 export function mobileEvent(event: Record<string, unknown>) { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(event)) }
@@ -36,7 +46,7 @@ export async function startMobile() {
   if (starting || stopped || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
   starting = true
   try {
-    const initial = await mobileApi<Pick<MobileState, 'sessions' | 'agents' | 'device' | 'defaultAgent' | 'defaultBypass'>>('/bootstrap')
+    const initial = await mobileApi<Pick<MobileState, 'sessions' | 'agents' | 'device' | 'defaultAgent' | 'defaultBypass' | 'dictation'>>('/bootstrap')
     update({ ...initial, ready: true, authenticated: true, error: '', selectedId: initial.sessions.some(item => item.id === state.selectedId) ? state.selectedId : initial.sessions.find(item => item.open)?.id || initial.sessions[0]?.id || null })
     const url = new URL('/mobile/events', location.href); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(url); socket = ws
@@ -61,6 +71,7 @@ export async function disconnectMobile() {
   await mobileApi('/disconnect', {}); stopped = true; clearTimeout(timer); clearInterval(heartbeat); socket?.close(); socket = null
   for (const key of Object.keys(localStorage)) if (key.startsWith('mrmak.mobile.')) localStorage.removeItem(key)
   sessionStorage.removeItem('mrmak.mobile.pair'); sessionStorage.removeItem('mrmak.mobile.pending')
+  await clearVoiceDrafts().catch(() => {})
   update({ authenticated: false, connected: false, sessions: [], selectedId: null }); stopped = false
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void startMobile(); else { clearTimeout(timer); socket?.close() } })

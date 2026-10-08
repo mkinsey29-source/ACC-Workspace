@@ -41,6 +41,7 @@ async function fixture(t) {
 test('pairing needs a one-use QR, matching origin, and explicit desktop approval', async t => {
   const { gateway, request, repo } = await fixture(t);
   assert.equal((await request('/bootstrap')).status, 401);
+  assert.equal((await fetch(`${gateway.origin}/mobile/api/transcribe`, { method: 'POST', headers: { Origin: gateway.origin, 'Content-Type': 'audio/webm', 'X-Transcription-Id': randomUUID() }, body: 'not authenticated' })).status, 401);
   const qr = await gateway.newPairing(); assert.ok(qr.qr.startsWith('data:image/png;base64,'));
   const token = new URL(qr.url).hash.slice(6);
   assert.equal((await request('/pair', { token }, null, { Origin: 'https://unrelated.example' })).status, 403);

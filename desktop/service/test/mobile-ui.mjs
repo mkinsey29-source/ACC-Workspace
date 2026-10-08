@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createService } from '../server.mjs';
+import { MobileDictation } from '../mobile-dictation.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 await mkdir(path.join(root, '.cache'), { recursive: true });
@@ -24,7 +25,12 @@ await writeFile(path.join(repo, 'workspace/report/index.html'), '<!doctype html>
 await writeFile(path.join(repo, 'workspace/report/plan.md'), '# Mobile plan\n\n**Keep the useful parts in view.**\n\n- Read results\n- Send a follow-up\n');
 await writeFile(path.join(repo, 'workspace/workspace.json'), JSON.stringify({ entities: [{ id: 'mobile-report', title: 'A useful report', folder: 'report', category: 'dev', created: '2026-10-06', steps: [{ name: 'Report', path: 'index.html' }, { name: 'Plan', path: 'plan.md' }] }] }));
 const transport = { probe: async () => ({ ready: true, installed: true }), enable: async origin => ({ origin }), disable: async () => {} };
-const service = await createService({ repo, uiDir: path.join(repo, 'ui'), mobileOptions: { transport }, mcpOptions: { home: repo, env: {} } });
+const voiceCalls = [];
+const dictation = new MobileDictation(repo, { env: { OPENROUTER_API_KEY: 'test-voice-key' }, fetcher: async (url, options) => {
+  voiceCalls.push({ url, size: options.body.get('file').size });
+  return Response.json({ text: 'A dictated follow-up.' });
+} });
+const service = await createService({ repo, uiDir: path.join(repo, 'ui'), mobileOptions: { transport, dictation }, mcpOptions: { home: repo, env: {} } });
 service.sessions.beginDiscovery = () => {};
 const writes = [], ids = [randomUUID(), randomUUID()];
 for (const [index, id] of ids.entries()) {
@@ -39,7 +45,7 @@ service.mobile.transcripts.read = async session => ({ supported: true, messages:
 ] });
 let browser, qrSource;
 try {
-  browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge' });
+  browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge', args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
   const desktop = await browser.newPage({ viewport: { width: 640, height: 860 } }); desktop.setDefaultTimeout(12000);
   const errors = []; desktop.on('pageerror', error => errors.push(error.message));
   await desktop.goto(service.urls.chats); await desktop.getByRole('button', { name: 'Mobile access', exact: true }).click();
@@ -55,6 +61,14 @@ try {
   await desktop.getByAltText('Scan to connect this phone to Mr. Mak').waitFor();
   await desktop.screenshot({ path: path.join(repo, 'desktop-pairing.png') });
   const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await mobileContext.addInitScript(() => {
+    const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    window.testMicTracks = [];
+    navigator.mediaDevices.getUserMedia = async options => {
+      if (window.testDenyMic) { window.testDenyMic = false; throw new DOMException('Permission denied', 'NotAllowedError'); }
+      const stream = await original(options); window.testMicTracks.push(...stream.getTracks()); return stream;
+    };
+  });
   const phone = await mobileContext.newPage(); phone.setDefaultTimeout(12000); phone.on('pageerror', error => errors.push(error.message));
   // Open from another site like a QR scanner, rather than an address-bar visit.
   qrSource = http.createServer((_request, response) => {
@@ -79,6 +93,51 @@ try {
   assert.deepEqual(ids.map(id => ({ cols: service.sessions.get(id).cols, rows: service.sessions.get(id).rows })), dimensions);
   assert.equal((await (await fetch(`${service.origin}/api/bootstrap`, { headers: { Authorization: `Bearer ${service.token}` } })).json()).selectedId, desktopSelected);
   const input = phone.getByRole('textbox', { name: 'Message this chat' });
+  await input.fill('Existing draft');
+  await phone.evaluate(() => { window.testDenyMic = true; });
+  await phone.getByRole('button', { name: 'Dictate a message', exact: true }).click();
+  await phone.getByText(/Allow microphone access in your browser/).waitFor();
+  assert.equal(await input.inputValue(), 'Existing draft'); assert.equal(voiceCalls.length, 0);
+  await phone.getByRole('button', { name: 'Dismiss voice input error' }).click();
+  const record = async () => {
+    await phone.getByRole('button', { name: 'Dictate a message', exact: true }).click();
+    await phone.getByRole('button', { name: 'Stop recording and transcribe' }).waitFor();
+    await phone.waitForTimeout(700);
+  };
+  await record();
+  assert.equal(await phone.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true);
+  await phone.screenshot({ path: path.join(repo, 'phone-dictation-recording.png') });
+  const writesBeforeVoice = writes.length;
+  await phone.getByRole('button', { name: 'Stop recording and transcribe' }).click();
+  await phone.getByText('Voice text added. Review it, then press Send.').waitFor();
+  assert.equal(await input.inputValue(), 'Existing draft\nA dictated follow-up.');
+  assert.equal(writes.length, writesBeforeVoice); assert.equal(voiceCalls.length, 1); assert.ok(voiceCalls[0].size > 12);
+  assert.equal(await phone.evaluate(() => window.testMicTracks.every(track => track.readyState === 'ended')), true);
+  await record(); await phone.getByRole('button', { name: 'Cancel recording' }).click();
+  await phone.getByRole('button', { name: 'Dictate a message', exact: true }).waitFor();
+  assert.equal(voiceCalls.length, 1); assert.equal(await input.inputValue(), 'Existing draft\nA dictated follow-up.');
+  // Lost transcription replies keep audio in IndexedDB. Reload and retry the same ID.
+  await phone.route('**/mobile/api/transcribe', async route => { await route.fetch(); await route.abort('failed'); });
+  await record(); await phone.getByRole('button', { name: 'Stop recording and transcribe' }).click();
+  await phone.getByRole('button', { name: 'Transcribe recording', exact: true }).waitFor();
+  assert.equal(voiceCalls.length, 2);
+  await phone.unroute('**/mobile/api/transcribe'); await phone.reload();
+  await phone.getByRole('button', { name: /Research ideas/ }).click();
+  await phone.getByRole('button', { name: 'Transcribe recording', exact: true }).click();
+  await phone.getByText('Voice text added. Review it, then press Send.').waitFor();
+  assert.equal(voiceCalls.length, 2); assert.equal(writes.length, writesBeforeVoice);
+  assert.equal(await input.inputValue(), 'Existing draft\nA dictated follow-up.\nA dictated follow-up.');
+  // Leaving the chat releases the microphone and saves unfinished audio in that chat.
+  await record(); await phone.getByRole('button', { name: 'Back to chats' }).click();
+  await phone.waitForTimeout(200);
+  assert.equal(await phone.evaluate(() => window.testMicTracks.every(track => track.readyState === 'ended')), true);
+  await phone.getByRole('button', { name: /Game animations/ }).click();
+  assert.equal(await phone.getByRole('button', { name: 'Transcribe recording', exact: true }).count(), 0);
+  await phone.getByRole('button', { name: 'Back to chats' }).click(); await phone.getByRole('button', { name: /Research ideas/ }).click();
+  await phone.getByRole('button', { name: 'Transcribe recording', exact: true }).waitFor();
+  await phone.screenshot({ path: path.join(repo, 'phone-dictation-recovery.png') });
+  await phone.getByRole('button', { name: 'Discard recording', exact: true }).click();
+  assert.equal(voiceCalls.length, 2);
   await input.fill('A thought from my phone'); await input.press('Shift+Enter'); await input.pressSequentially('Please keep the same chat.');
   assert.equal(await input.inputValue(), 'A thought from my phone\nPlease keep the same chat.');
   // The server receives the request, but its first reply is lost on the network.
@@ -128,7 +187,7 @@ try {
   await phone.getByRole('heading', { name: 'Start in Mr. Mak Chats' }).waitFor();
   assert.equal(service.sessions.get(ids[0]).status, 'running'); assert.equal(service.sessions.get(ids[1]).status, 'running');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, fixture: repo, checks: ['QR + desktop approval', 'independent views and PTY sizes', 'lost reply / retry once', 'drafts per chat', 'offline recovery', 'image attachment', 'sandboxed report + image download', 'Markdown preview', '360/390/768px layout', 'device revocation'] }));
+  console.log(JSON.stringify({ ok: true, fixture: repo, checks: ['QR + desktop approval', 'independent views and PTY sizes', 'microphone permission / record / stop / cancel', 'dictation never auto-sends', 'saved recording recovery after reload and chat switch', 'lost transcription reply reuses provider result', 'lost reply / retry once', 'drafts per chat', 'offline recovery', 'image attachment', 'sandboxed report + image download', 'Markdown preview', '360/390/768px layout', 'device revocation'] }));
 } finally {
   if (qrSource) await new Promise(resolve => qrSource.close(resolve));
   await browser?.close(); for (const session of service.sessions.items.values()) session.process = null;
