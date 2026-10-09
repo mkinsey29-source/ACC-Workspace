@@ -2,6 +2,8 @@
 
 ## 0.5.1 - 2026-10-09
 
+- Click a card's status dot in the desktop Workspace to set Active, Done or Archived, change its category, or pin it. Changes save immediately; archived cards keep their files and can be restored through search or Show archive.
+- Retry card saves when Windows briefly locks the registry, preserving the latest metadata and cleaning up unsuccessful temporary writes.
 - Add left/right terminal arrows on phones for CLI menus such as reasoning effort. Keep all keys visible with touch-sized buttons that wrap on narrow screens.
 - Close an agent chat from the phone after confirmation. Its desktop tab closes too; the saved conversation stays in History and the phone retains its unsent draft.
 

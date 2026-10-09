@@ -64,7 +64,9 @@ dictation need no Mr. Mak transcription key.
   saved in `inbox/attachments`.
 - **Projects with their work attached.** Keep research, design versions, saved
   prompts and motion tests in tabs inside a card. Open images at full size and
-  download them from the preview.
+  download them from the preview. In the desktop app, click a card's status dot
+  to change its status or category, pin it, or archive it. Restore archived cards
+  from search or Show archive; their files and tabs stay in place.
 - **Skills and tools within reach.** The right rail opens project skills,
   knowledge, workflows, MCP connections, Settings and Help. See which MCP
   connections come from the project and which come from your agent's global setup.

@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, mkdir, realpath, stat } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir, realpath, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
@@ -15,8 +15,12 @@ export async function readJson(file, fallback) {
 export async function saveJson(file, value) {
   await mkdir(path.dirname(file), { recursive: true });
   const temp = `${file}.${randomBytes(5).toString('hex')}.tmp`;
-  await writeFile(temp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
-  await rename(temp, file);
+  try {
+    await writeFile(temp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
+    await rename(temp, file);
+  } finally {
+    await unlink(temp).catch(() => {});
+  }
 }
 export const within = (root, file) => {
   const rel = path.relative(root, file);
