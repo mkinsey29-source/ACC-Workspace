@@ -6,6 +6,8 @@ import MakLogo from './components/MakLogo'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import HomeGrid from './components/HomeGrid'
+import EntityControls from './components/EntityControls'
+import ReportBoundary from './components/ReportBoundary'
 import { contentUrl, isDesktop } from './desktop/client'
 
 const Compare3D = lazy(() => import('./components/Compare3D'))
@@ -20,7 +22,7 @@ const byFreshness = (a: WorkspaceEntity, b: WorkspaceEntity) =>
   lastTouched(b).localeCompare(lastTouched(a)) || statusRank(a) - statusRank(b)
 
 export default function App() {
-  const { workspace, offline, lastSync } = useWorkspace()
+  const { workspace, offline, lastSync, reload } = useWorkspace()
   const [route, setRoute] = useState<Route>(parseHash)
   const [query, setQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
@@ -123,6 +125,7 @@ export default function App() {
   }
 
   return (
+    <EntityControls entities={entities} onChanged={reload}>
     <div className={`app-layout${collapsed ? ' sidebar-collapsed' : ''}`} data-entity={route.id}>
       <Sidebar
         pinned={pinned}
@@ -161,6 +164,7 @@ export default function App() {
         />
 
         <div className="content">
+          <ReportBoundary key={reportUrl || 'home'} onHome={goHome}>
           {entity && reportUrl && step?.viewer === 'compare3d' ? (
             <Suspense fallback={<div className="boot"><MakLogo size={56} animated={false} /></div>}><Compare3D
               key={reportUrl}
@@ -179,8 +183,10 @@ export default function App() {
               query={query}
             />
           )}
+          </ReportBoundary>
         </div>
       </main>
     </div>
+    </EntityControls>
   )
 }

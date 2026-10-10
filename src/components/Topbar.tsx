@@ -1,4 +1,7 @@
 import type { WorkspaceEntity } from '../types'
+import { isDesktop } from '../desktop/client'
+import BrowserSettings from './BrowserSettings'
+import { EntityStatusButton } from './EntityControls'
 
 interface TopbarProps {
   entity: WorkspaceEntity | null
@@ -19,8 +22,10 @@ export default function Topbar({ entity, stepIndex, onStep, onHome, reportUrl }:
           <>
             <span className="crumb-sep">/</span>
             <span className="crumb-current">{entity.title}</span>
+            <EntityStatusButton entity={entity} />
           </>
         )}
+        {!isDesktop && <BrowserSettings />}
       </nav>
 
       {entity && (

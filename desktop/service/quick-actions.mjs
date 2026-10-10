@@ -2,6 +2,7 @@ import path from 'node:path';
 import { readJson, saveJson, publicError } from './util.mjs';
 import { localDay } from './workspace.mjs';
 import { taskTitle } from './titles.mjs';
+import { defaultWorkerEffort } from './effort.mjs';
 
 const normalize = text => String(text || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const polite = text => String(text || '').trim().replace(/^(?:(?:ну|так|слушай|давай|пожалуйста|please|can you)[,\s]+)+/iu, '').replace(/[,\s]+пожалуйста[.!?]?$/iu, '').replace(/[.!?]+$/, '').trim();
@@ -88,11 +89,11 @@ export class QuickActions {
     if (match) { const { card } = resolve(match[1]); return card ? async () => { const value = await call('read_workspace', { entityId: card.id }); return `${value.title}\n${value.description || ''}\n\n${value.text.slice(0, 4000)}${value.note ? '\n' + value.note : ''}`; } : null; }
     if (/^(?:покажи |список |list |show )?(?:все |all )?(?:чаты|chats)$/iu.test(text)) return async () => state.chats.length ? state.chats.map(({ name, attention }) => `• ${name}${attention ? ' — needs attention' : ''}`).join('\n') : 'There are no open chats.';
     if (/^(?:покажи |список |list |show )?(?:все |all )?(?:карточки|cards)$/iu.test(text)) return async () => `${cards.length} Workspace cards:\n${cards.slice(0, 15).map(({ title }) => `• ${title}`).join('\n')}`;
-    match = /^(?:создай|открой|create|open)\s+(?:новый |new )?(?:(codex|кодекс|claude|клод|kimi)\s+)?(?:чат|chat)\s+(?:с названием |под названием |named |called )?[«"“]([^»"”]+)[»"”]$/iu.exec(text);
+    match = /^(?:создай|открой|create|open)\s+(?:новый |new )?(?:(codex|кодекс|claude|клод|opencode|kimi)\s+)?(?:чат|chat)\s+(?:с названием |под названием |named |called )?[«"“]([^»"”]+)[»"”]$/iu.exec(text);
     if (match) {
       let name; try { name = taskTitle(match[2]); } catch { return null; }
-      const agent = /claude|клод/iu.test(match[1] || '') ? 'claude' : /kimi/iu.test(match[1] || '') ? 'kimi' : 'codex';
-      return async () => { const chat = await call('open_chat', { agent, name, effort: 'medium' }); return `Created "${chat.name}". The agent is starting.`; };
+      const agent = /claude|клод/iu.test(match[1] || '') ? 'claude' : /opencode/iu.test(match[1] || '') ? 'opencode' : /kimi/iu.test(match[1] || '') ? 'kimi' : 'codex';
+      return async () => { const chat = await call('open_chat', { agent, name, effort: defaultWorkerEffort }); return `Created "${chat.name}". The agent is starting.`; };
     }
     return null;
   }

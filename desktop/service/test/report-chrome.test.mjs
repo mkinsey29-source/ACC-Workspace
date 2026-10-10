@@ -12,7 +12,7 @@ async function rendered(chunks) {
   for await(const chunk of Readable.from(chunks).pipe(reportChromeStream()))result.push(chunk);
   return Buffer.concat(result).toString('utf8');
 }
-const original = output => output.replace(/<meta name="color-scheme" content="dark"><style data-mrmak-chrome>[\s\S]*?<\/style>/,'');
+const original = output => output.replace(/<meta name="color-scheme" content="dark"><style data-mrmak-chrome>[\s\S]*?<\/style><script data-mrmak-links>[\s\S]*?<\/script>/,'');
 test('report chrome precedes document styles and preserves Unicode and original content across chunks', async()=>{
   const source='\uFEFF<!doctype html><html lang="en"><head><meta charset="utf-8"><style>body{background:#ddd}</style></head><body>Пример 🐽<pre>const head = "&lt;head&gt;";</pre></body></html>';
   const bytes=Buffer.from(source);

@@ -1,19 +1,20 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { mkdir, stat, readdir } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import pty from 'node-pty';
 import headless from '@xterm/headless';
-import serialize from '@xterm/addon-serialize';
+import { TerminalSnapshotAddon } from './terminal-snapshot.mjs';
 import { terminalCommand, childEnvironment } from './agents.mjs';
 import { readJson, saveJson } from './util.mjs';
 import { claudeTranscript, codexTranscript, tailNativeFile } from './native-events.mjs';
+import { findCodexChat } from './codex-history.mjs';
 import { englishTitle, restoredTitle } from './titles.mjs';
-import { workerEfforts } from './effort.mjs';
+import { defaultWorkerEffort, workerEfforts } from './effort.mjs';
+import { ptyOptions } from './platform.mjs';
+import { opencodeVersion, opencodeEnvironment, readOpencodeState, watchOpencode } from './opencode.mjs';
 
 const { Terminal } = headless;
-const { SerializeAddon } = serialize;
 const publicSession = session => {
   const { id, name, agent, cwd, bypass, effort, status, createdAt, lastOutputAt, lastInputAt, exitCode, nativeId, attention, activity, unread, completionVersion, lastCompletedId, cols, rows, open, pinned, tabOrder, tabColor, updatedAt, preview, hasConversation, restoreError } = session;
   return { id, name, agent, cwd, bypass, effort, status, createdAt, lastOutputAt, lastInputAt, exitCode, nativeId, attention, activity, unread, completionVersion, lastCompletedId, cols, rows, open, pinned, tabOrder, tabColor, updatedAt, preview, hasConversation, restoreError };
@@ -44,7 +45,7 @@ export class Sessions extends EventEmitter {
   }
 
   make(metadata) {
-    return { activity: 'idle', unread: false, completionVersion: 0, tabOrder: this.items.size, tabColor: null, ...metadata, terminal: null, serializer: null, process: null, sequence: 0, pendingOutput: '', outputTimer: null };
+    return { activity: 'idle', unread: false, completionVersion: 0, tabOrder: this.items.size, tabColor: null, ...metadata, effort: ['codex', 'claude'].includes(metadata.agent) ? metadata.effort || defaultWorkerEffort : undefined, terminal: null, serializer: null, process: null, sequence: 0, pendingOutput: '', outputTimer: null };
   }
 
   async hydrate(session) {
@@ -52,7 +53,7 @@ export class Sessions extends EventEmitter {
     if (session.terminal) return;
     session.hydrating = (async () => {
       const terminal = new Terminal({ cols: session.cols || 90, rows: session.rows || 32, scrollback: 3000, allowProposedApi: true });
-      const serializer = new SerializeAddon();
+      const serializer = new TerminalSnapshotAddon();
       terminal.loadAddon(serializer);
       session.terminal = terminal; session.serializer = serializer;
       const screen = await readJson(path.join(this.stateDir, `screen-${session.id}.json`), null);
@@ -94,21 +95,21 @@ export class Sessions extends EventEmitter {
       id: randomUUID(), agent, name: englishTitle(options.name, `Conversation ${this.items.size + 1}`),
       tabOrder: Math.max(-1, ...this.list().map(item => item.tabOrder)) + 1,
       cwd, bypass: options.bypass === true, createdAt: now, lastInputAt: null, lastOutputAt: null,
-      effort: ['codex', 'claude'].includes(agent) ? options.effort || 'medium' : undefined,
+      effort: options.effort,
       status: 'starting', nativeId: options.resumeId || (agent === 'claude' ? randomUUID() : null),
       open: true, pinned: false, updatedAt: now, preview: '', hasConversation: !!options.resumeId, restoreError: null,
       attention: false, cols: Math.min(500, Math.max(20, options.cols || 90)), rows: Math.min(200, Math.max(5, options.rows || 32)),
     });
     this.items.set(session.id, session);
     await this.hydrate(session);
-    try { this.launch(session, options.resumeId, await this.nativeBoundary(session, options.resumeId)); }
+    try { await this.launch(session, options.resumeId, await this.nativeBoundary(session, options.resumeId)); }
     catch (error) { this.items.delete(session.id); session.terminal.dispose(); throw error; }
     await this.persist();
     return publicSession(session);
   }
 
   async importConversation({ agent, nativeId, name, cwd, pinned = false, bypass = false }) {
-    if (!['codex', 'claude', 'kimi'].includes(agent) || typeof nativeId !== 'string' || !nativeId.trim()) throw new Error('Choose an agent and its native conversation ID.');
+    if (!['codex', 'claude', 'opencode', 'kimi'].includes(agent) || typeof nativeId !== 'string' || !nativeId.trim()) throw new Error('Choose an agent and its native conversation ID.');
     nativeId = nativeId.trim();
     cwd = path.resolve(cwd || this.repo);
     if (!(await stat(cwd)).isDirectory()) throw new Error('Working folder must be a directory');
@@ -120,11 +121,21 @@ export class Sessions extends EventEmitter {
     return publicSession(session);
   }
 
-  launch(session, resumeId, nativeWatch) {
-    const command = terminalCommand(session.agent, { bypass: session.bypass, resumeId, nativeId: session.nativeId, effort: session.effort });
-    const env = childEnvironment(this.repo);
+  async launch(session, resumeId, nativeWatch) {
+    let env = childEnvironment(this.repo);
+    let opencodeMajor;
+    if (session.agent === 'opencode') {
+      opencodeMajor = await opencodeVersion(env);
+      // v2 explicitly accepts a new ID through --session. Assign it before
+      // launch, so even a very early close retains an exact resume target.
+      if (opencodeMajor === 2 && !session.nativeId) session.nativeId = `ses_${randomUUID().replaceAll('-', '')}`;
+      if (opencodeMajor === 2) resumeId ||= session.nativeId;
+      env = opencodeEnvironment(env, { stateDir: this.stateDir, session, major: opencodeMajor });
+    }
+    if (this.closed || !session.open) throw new Error('The chat was closed before its terminal started.');
+    const command = terminalCommand(session.agent, { bypass: session.bypass, resumeId, nativeId: session.nativeId, effort: session.effort, opencodeMajor });
     if (session.agent === 'codex') env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE = `mrmak_chat_${session.id}`;
-    const proc = pty.spawn(command.file, command.args, { name: 'xterm-256color', cwd: session.cwd, env, cols: session.cols, rows: session.rows, useConpty: true, useConptyDll: true });
+    const proc = pty.spawn(command.file, command.args, ptyOptions({ cwd: session.cwd, env, cols: session.cols, rows: session.rows }));
     session.process = proc;
     session.deviceReplies?.dispose();
     // Inactive tabs still have a terminal: answer device queries without needing
@@ -149,10 +160,12 @@ export class Sessions extends EventEmitter {
       this.flushOutput(session);
       session.process = null;
       session.deviceReplies?.dispose();
-      // node-pty 1.1.0 leaves its ConPTY output worker alive after a natural exit.
-      // The bundled ConPTY DLL avoids the legacy AttachConsole-on-dead-PID path.
-      try { proc.kill(); } catch { /* Native console already closed. */ }
-      proc._agent?._conoutSocketWorker?.dispose();
+      if (process.platform === 'win32') {
+        // node-pty 1.1.0 leaves its ConPTY output worker alive after a natural exit.
+        // The bundled ConPTY DLL avoids the legacy AttachConsole-on-dead-PID path.
+        try { proc.kill(); } catch { /* Native console already closed. */ }
+        proc._agent?._conoutSocketWorker?.dispose();
+      }
       session.stopNativeWatch?.();
       session.stopNativeWatch = null;
       session.status = 'exited';
@@ -164,10 +177,24 @@ export class Sessions extends EventEmitter {
         const match = /codex resume ([a-f0-9-]{36})/i.exec(screen);
         if (match) { session.nativeId = match[1]; this.changed(session); }
       }).catch(() => {});
+      if (session.agent === 'opencode') readOpencodeState(this.stateDir, session.id).then(state => {
+        if (state?.launchId === env.MRMAK_OPENCODE_LAUNCH_ID) {
+          this.bindNative(session, { id: state.nativeId });
+          if (state.completion && session.nativeId === state.nativeId) this.nativeEvent(session, { kind: 'turn-completed', id: state.completion });
+        }
+      }).catch(() => {});
     });
     this.changed(session);
     // Discovery is read-only, and only accepts an unambiguous native session.
     this.beginDiscovery(session);
+    if (session.agent === 'opencode') session.stopNativeWatch = watchOpencode(this.stateDir, session, env.MRMAK_OPENCODE_LAUNCH_ID, state => {
+      this.bindNative(session, { id: state.nativeId });
+      if (session.nativeId !== state.nativeId) return;
+      if (state.completion) this.nativeEvent(session, { kind: 'turn-completed', id: state.completion });
+      if (state.activity === 'working') this.nativeEvent(session, { kind: 'turn-started' });
+      else if (state.activity === 'waiting') this.nativeEvent(session, { kind: 'attention' });
+      else if (state.activity === 'idle' && session.activity !== 'idle') this.nativeEvent(session, { kind: 'turn-interrupted' });
+    });
     if (nativeWatch) this.watchNative(session, nativeWatch.file, nativeWatch.offset);
     else if (session.agent === 'claude' && session.nativeId) claudeTranscript(session.cwd, session.nativeId).then(file => {
       if (session.process === proc) this.watchNative(session, file);
@@ -208,38 +235,33 @@ export class Sessions extends EventEmitter {
 
   async discoverNative(session) {
     if (session.agent !== 'codex' || session.nativeId) return;
-    const home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
-    const date = new Date().toISOString().slice(0, 10).split('-');
-    const folder = path.join(home, 'sessions', ...date);
-    const { open } = await import('node:fs/promises');
-    for (let attempt = 0; attempt < 60 && session.process; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const matches = [];
-      for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
-        if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
-        const file = path.join(folder, entry.name);
-        const info = await stat(file);
-        if (info.birthtimeMs < session.startedAt - 1000) continue;
-        const handle = await open(file, 'r');
-        try {
-          const buffer = Buffer.alloc(32768);
-          const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-          const first = JSON.parse(buffer.subarray(0, bytesRead).toString().split('\n')[0]);
-          if (first.type === 'session_meta' && first.payload?.cwd?.toLowerCase() === session.cwd.toLowerCase() && first.payload?.source === 'cli') matches.push({ id: first.payload.id, file, owned: first.payload.originator === `mrmak_chat_${session.id}` });
-        } catch { /* A partial record will be retried. */ } finally { await handle.close(); }
-      }
-      const peers = [...this.items.values()].filter(item => item !== session && item.agent === 'codex' && item.cwd === session.cwd && !item.nativeId && item.process);
-      const claimed = new Set([...this.items.values()].map(item => item.nativeId));
-      const candidates = matches.filter(item => !claimed.has(item.id));
-      const owned = candidates.filter(item => item.owned);
-      const match = owned.length === 1 ? owned[0] : candidates.length === 1 && !peers.length ? candidates[0] : null;
-      if (match) {
-        session.nativeId = match.id;
-        this.changed(session);
-        this.watchNative(session, match.file);
-        return;
-      }
+    const process = session.process;
+    for (let attempt = 0; !this.closed && process && session.process === process && !session.nativeId; attempt++) {
+      const match = await findCodexChat(session);
+      if (this.closed || session.process !== process || session.nativeId) return;
+      if (this.bindNative(session, match)) { this.watchNative(session, match.file); return; }
+      // A first prompt, login or CLI update can take longer than thirty seconds.
+      await new Promise(resolve => { const timer = setTimeout(resolve, attempt < 60 ? 500 : 3000); timer.unref(); });
     }
+  }
+
+  bindNative(session, match) {
+    if (!match || session.nativeId || [...this.items.values()].some(item => item !== session && item.nativeId === match.id)) return false;
+    session.nativeId = match.id;
+    session.hasConversation = true;
+    session.restoreError = null;
+    this.changed(session);
+    return true;
+  }
+
+  async recoverNative(session) {
+    if (session.agent === 'opencode' && !session.nativeId) {
+      const state = await readOpencodeState(this.stateDir, session.id);
+      if (state) this.bindNative(session, { id: state.nativeId });
+      return;
+    }
+    if (session.agent !== 'codex' || session.nativeId) return;
+    this.bindNative(session, await findCodexChat(session, { full: true }));
   }
 
   flushOutput(session) {
@@ -278,7 +300,7 @@ export class Sessions extends EventEmitter {
   input(id, data, { coordinator = false, submit = false } = {}) {
     const session = this.get(id);
     if (!session.process) throw new Error('This terminal is stopped. Resume it before sending a message.');
-    if (coordinator && session.agent === 'shell') throw new Error('Mr. Mak can send messages to agent chats; type shell commands directly in PowerShell.');
+    if (coordinator && session.agent === 'shell') throw new Error('Mr. Mak can send messages to agent chats; type shell commands directly in the local shell.');
     if (typeof data !== 'string' || data.length > 64000) throw new Error('Message is too large');
     if (coordinator && Date.now() - Date.parse(session.lastInputAt || 0) < 2500) throw new Error('You are typing in this chat. Wait a moment before sending through Mr. Mak.');
     if (coordinator) {
@@ -286,8 +308,8 @@ export class Sessions extends EventEmitter {
       const clean = data.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').replaceAll('\r', '');
       const target = session.process;
       target.write(`\x1b[200~${clean}\x1b[201~`);
-      // ConPTY and the native CLI finish handling a paste asynchronously. A quick
-      // Enter can be swallowed by Codex's paste guard, especially after resume.
+      // The native CLI finishes handling a paste asynchronously. A quick Enter
+      // can be swallowed by a paste guard, especially after resume.
       if (submit) setTimeout(() => { if (session.process === target) target.write('\r'); }, 500);
     } else session.process.write(data);
     if (!coordinator && !/^\x1b\[[?>0-9;]*[RcnIO]$/.test(data)) session.attention = false;
@@ -309,6 +331,7 @@ export class Sessions extends EventEmitter {
     session.cols = cols; session.rows = rows;
     session.terminal?.resize(cols, rows);
     session.process?.resize(cols, rows);
+    this.emit('terminal-resized', { id, cols, rows });
     this.dirty = true;
   }
   rename(id, name) { const session = this.get(id); session.name = englishTitle(name, session.name); this.changed(session); return publicSession(session); }
@@ -363,7 +386,18 @@ export class Sessions extends EventEmitter {
     const file = !resumeId ? null : session.agent === 'codex' ? await codexTranscript(resumeId) : session.agent === 'claude' ? await claudeTranscript(session.cwd, resumeId) : null;
     return file ? { file, offset: (await stat(file).catch(() => null))?.size || 0 } : null;
   }
-  stop(id) { const session = this.get(id); session.process?.kill(); return { stopped: !!session.process }; }
+  stop(id) { const session = this.get(id); this.requestStop(session); return { stopped: !!session.process }; }
+  requestStop(session) {
+    const proc = session.process;
+    if (!proc) return;
+    if (session.agent !== 'opencode') { proc.kill(); return; }
+    // Let OpenCode flush and close its SQLite store before ConPTY is destroyed.
+    // Ctrl+C cancels work; a second press exits the native TUI. Custom keymaps
+    // or an unresponsive CLI still have a bounded hard-stop fallback.
+    proc.write('\x03');
+    setTimeout(() => { try { if (session.process === proc) proc.write('\x03'); } catch { /* Process already exited. */ } }, 500).unref();
+    setTimeout(() => { try { if (session.process === proc) proc.kill(); } catch { /* Process already exited. */ } }, 3500).unref();
+  }
   async resume(id, nativeId) {
     if (this.closed) throw new Error('Mr. Mak is shutting down');
     const session = this.get(id);
@@ -371,6 +405,7 @@ export class Sessions extends EventEmitter {
     if (session.process) return publicSession(session);
     if (!session.open && this.active().length >= 80) throw new Error('Close a tab before opening another.');
     await this.hydrate(session);
+    if (!nativeId) await this.recoverNative(session);
     let resumeId = nativeId || session.nativeId;
     // A terminal closed before its first prompt may have no native conversation yet.
     if (session.agent === 'claude' && resumeId && !nativeId && !(await stat(await claudeTranscript(session.cwd, resumeId)).catch(() => null))) resumeId = null;
@@ -381,20 +416,27 @@ export class Sessions extends EventEmitter {
     // Capture the boundary before launching the resumed CLI. Even an immediate
     // submitted task must be observed, while historic answers stay acknowledged.
     const nativeWatch = await this.nativeBoundary(session, resumeId);
+    if (session.process) return publicSession(session);
     session.open = true; session.updatedAt = new Date().toISOString();
-    this.launch(session, resumeId, nativeWatch);
+    if (session.launching) await session.launching;
+    else {
+      session.launching = this.launch(session, resumeId, nativeWatch);
+      try { await session.launching; } finally { session.launching = null; }
+    }
     await this.persist();
     return publicSession(session);
   }
   async remove(id) {
     const session = this.get(id);
+    // Capture an ID even if the user closes before background discovery runs.
+    await this.recoverNative(session);
     session.open = false; session.updatedAt = new Date().toISOString();
     if (session.process && !session.stopping) {
       const proc = session.process;
       session.stopping = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => { subscription.dispose(); reject(new Error('The terminal is still closing. Try reopening it in a moment.')); }, 8000);
         const subscription = proc.onExit(() => { clearTimeout(timeout); subscription.dispose(); resolve(); });
-        try { proc.kill(); } catch (error) { clearTimeout(timeout); subscription.dispose(); reject(error); }
+        try { this.requestStop(session); } catch (error) { clearTimeout(timeout); subscription.dispose(); reject(error); }
       }).finally(() => { session.stopping = null; });
     }
     this.changed(session);
@@ -416,6 +458,14 @@ export class Sessions extends EventEmitter {
   }
   async close() {
     this.closed = true; clearInterval(this.timer);
+    // Preserve the open-tab flags on app quit while giving OpenCode time to
+    // close the database used by the next launch.
+    await Promise.all([...this.items.values()].filter(s => s.agent === 'opencode' && s.process).map(session => new Promise(resolve => {
+      const proc = session.process;
+      const timer = setTimeout(() => { subscription.dispose(); resolve(); }, 5000);
+      const subscription = proc.onExit(() => { clearTimeout(timer); subscription.dispose(); resolve(); });
+      try { this.requestStop(session); } catch { clearTimeout(timer); subscription.dispose(); resolve(); }
+    })));
     for (const session of this.items.values()) { session.stopNativeWatch?.(); session.process?.kill(); this.flushOutput(session); }
     await this.persist();
     for (const session of this.items.values()) session.terminal?.dispose();

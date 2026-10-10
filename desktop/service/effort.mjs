@@ -1,4 +1,5 @@
 export const workerEfforts = ['medium', 'high', 'xhigh', 'max'];
+export const defaultWorkerEffort = 'xhigh';
 
 export function explicitMax(text = '') {
   const value = String(text).toLowerCase();

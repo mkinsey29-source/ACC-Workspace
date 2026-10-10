@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createService } from '../server.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+await mkdir(path.join(root, '.cache'), { recursive: true });
 const repo = await mkdtemp(path.join(root, '.cache/workspace-ui-'));
 for (const dir of ['workspace/test', 'knowledge', 'processes', '.claude/skills/example', '.agents/skills/example', 'inbox', 'projects']) await mkdir(path.join(repo, dir), { recursive: true });
 await writeFile(path.join(repo, '.claude/skills/example/SKILL.md'), '# Example skill\n\n**Read me**\n');
@@ -23,7 +24,7 @@ await writeFile(path.join(repo, '.claude/settings.local.json'), JSON.stringify({
 await writeFile(path.join(mcpHome, '.codex/config.toml'), '[mcp_servers."global-tools"]\nurl="https://global.example/mcp"\n');
 const service = await createService({ repo, uiDir: path.join(root, 'dist'), mcpOptions: { home: mcpHome, env: {}, probe: async () => ({ status: 'available', toolCount: 7 }) } });
 const writes = new Map();
-for (const agent of ['codex', 'claude', 'kimi', 'shell']) {
+for (const agent of ['codex', 'claude', 'opencode', 'kimi', 'shell']) {
   const session = service.sessions.make({ id: agent, name: `${agent} fixture`, agent, cwd: repo, status: 'running', open: true, pinned: false, createdAt: new Date().toISOString(), cols: 90, rows: 30 });
   service.sessions.items.set(agent, session); await service.sessions.hydrate(session);
   const received = []; writes.set(agent, received);
@@ -40,7 +41,7 @@ try {
   for (let index = 0; index < 12; index++) { await page.getByRole('tab').nth(index).click(); await page.frameLocator('iframe.report-frame').getByRole('heading', { name: `Document ${index + 1}`, exact: true }).waitFor(); }
   let releaseReport;
   const delayedReport = new Promise(resolve => { releaseReport = resolve; });
-  await page.route('**/workspace/test/step0.html', async route => { if (route.request().method() === 'GET') await delayedReport; await route.continue(); });
+  await page.route('**/workspace/test/step0.html*', async route => { if (route.request().method() === 'GET') await delayedReport; await route.continue(); });
   await page.getByRole('tab').nth(0).click();
   try {
     await page.getByRole('status').filter({ hasText: 'Opening report' }).waitFor();
@@ -49,7 +50,7 @@ try {
   } finally { releaseReport(); }
   await page.locator('.report-document[aria-busy=false]').waitFor();
   assert.equal(await page.frameLocator('iframe.report-frame').locator('body').evaluate(element => getComputedStyle(element).scrollbarColor), 'rgb(81, 76, 89) rgb(17, 18, 23)');
-  await page.unroute('**/workspace/test/step0.html');
+  await page.unroute('**/workspace/test/step0.html*');
   await page.route('**/workspace/test/step1.html', route => route.request().method() === 'HEAD' ? route.fulfill({ status: 404 }) : route.continue());
   await page.getByRole('tab').nth(1).click();
   await page.getByText('Page unavailable (404).', { exact: true }).waitFor();
@@ -89,7 +90,33 @@ try {
   await page.getByText('No MCP servers match these filters.', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Close MCP', exact: true }).click();
   await page.goto(service.urls.chats);
-  for (const agent of ['codex', 'claude', 'kimi', 'shell']) {
+  async function setTerminalFontSize(size) {
+    await page.getByTitle('Chat options', { exact: true }).click();
+    const control = page.locator('.font-control');
+    const current = Number(await control.locator('span').last().innerText());
+    const button = control.getByRole('button', { name: size > current ? '+' : '−', exact: true });
+    for (let count = 0; count < Math.abs(size - current); count++) await button.click();
+    await page.getByTitle('Chat options', { exact: true }).click();
+  }
+  // Check the actual terminal rows, not just the host box: FitAddon can size
+  // a grid into parent padding and silently clip the CLI's bottom status row.
+  for (const [width, height, fontSize] of [[535, 720, 13], [535, 497, 17], [900, 800, 13], [640, 480, 22]]) {
+    await page.setViewportSize({ width, height });
+    await setTerminalFontSize(fontSize);
+    await page.waitForFunction(size => {
+      const rows = document.querySelector('.xterm-rows');
+      return rows && getComputedStyle(rows).fontSize === `${size}px`;
+    }, fontSize);
+    await page.waitForFunction(() => {
+      const last = document.querySelector('.xterm-rows > :last-child')?.getBoundingClientRect();
+      const host = document.querySelector('.terminal-host')?.getBoundingClientRect();
+      const status = document.querySelector('.chat-status')?.getBoundingClientRect();
+      return last && host && status && last.bottom <= host.bottom + .5 && last.bottom <= status.top - 4 && last.right <= host.right + .5;
+    }, null, { timeout: 3000 });
+  }
+  await page.setViewportSize({ width: 900, height: 800 });
+  await setTerminalFontSize(13);
+  for (const agent of ['codex', 'claude', 'opencode', 'kimi', 'shell']) {
     await page.locator(`[data-chat-tab="${agent}"] [role="tab"]`).click();
     const screen = page.locator('.terminal-area .xterm-screen'); await screen.waitFor();
     await page.locator('.xterm-rows').filter({ hasText: 'Fixture line' }).waitFor();
@@ -108,11 +135,11 @@ try {
     } else {
       await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.press('Control+c');
       for (let i = 0; i < 20 && !writes.get(agent).includes('\x03'); i++) await new Promise(resolve => setTimeout(resolve, 20));
-      assert.ok(writes.get(agent).includes('\x03'), 'PowerShell retains Ctrl+C interrupt');
+      assert.ok(writes.get(agent).includes('\x03'), 'The local shell retains Ctrl+C interrupt');
     }
   }
   assert.deepEqual(errors, []);
-  console.log('UI passed: 12 clickable wrapping tabs; Markdown preview/edit/save/conflict/draft; local Skills; MCP filtering, checks and hidden credentials; Codex/Claude/Kimi copy and scroll; PowerShell interrupt.');
+  console.log('UI passed: 12 clickable wrapping tabs; Markdown preview/edit/save/conflict/draft; local Skills; MCP filtering, checks and hidden credentials; terminal bottom row visible across four window/font sizes; Codex/Claude/OpenCode/Kimi copy and scroll; PowerShell interrupt.');
 } finally {
   await browser?.close();
   for (const session of service.sessions.items.values()) session.process = null;

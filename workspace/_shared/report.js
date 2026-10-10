@@ -30,6 +30,7 @@
       let filename = 'image'; try { filename = decodeURIComponent(new URL(url, location.href).pathname.split('/').pop()) || filename; } catch { /* Data URLs use the fallback. */ }
       caption.textContent = image.alt || filename; counter.textContent = `${current + 1} / ${collection.length}`;
       display.src = url; display.alt = image.alt || filename; original.href = url; download.href = url; download.download = filename;
+      if (location.pathname.startsWith('/mobile/view/')) { const saved = new URL(url, location.href); saved.searchParams.set('download', '1'); download.href = saved.href; }
       stage.classList.remove('actual'); zoom.textContent = '100%'; note.textContent = 'Arrow keys to browse · Esc to close';
       if (!dialog.open) { restoreFocus = image; dialog.showModal(); }
     };

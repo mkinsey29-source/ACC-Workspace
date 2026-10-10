@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { WorkspaceState } from '../types'
+import type { WorkspaceEntity, WorkspaceState } from '../types'
 import { api, isDesktop } from '../desktop/client'
 
 const POLL_MS = 30_000
 const ARCHIVE_DAYS = 7
+
+export type EntityPatch = Partial<Pick<WorkspaceEntity, 'status' | 'category' | 'pinned'>>
+
+export async function updateWorkspaceEntity(id: string, patch: EntityPatch) {
+  const route = `/workspace/entities/${encodeURIComponent(id)}`
+  if (!isDesktop) throw new Error('Open the desktop app to edit Workspace cards.')
+  await api(route, patch, 'PATCH')
+  window.dispatchEvent(new Event('mrmak-workspace-changed'))
+}
 
 export function archiveCutoff(): string {
   const d = new Date()
@@ -62,5 +71,5 @@ export function useWorkspace() {
     }
   }, [reload])
 
-  return { workspace, offline, lastSync }
+  return { workspace, offline, lastSync, reload }
 }

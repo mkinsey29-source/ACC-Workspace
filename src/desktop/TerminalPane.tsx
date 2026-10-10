@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { api, onServiceEvent, pickFiles, reportError, sendEvent, uploadImage } from './client'
 import { Icon } from './Icons'
@@ -69,13 +70,21 @@ export default function TerminalPane({ id, agent, fontSize, appearance, onAttach
   }, [id])
   useEffect(() => {
     if (!host.current) return
+    const openLink = (event: MouseEvent, text: string) => {
+      event.preventDefault()
+      try {
+        const url = new URL(text)
+        if (url.protocol === 'https:' || url.protocol === 'http:') window.open(url.href, '_blank', 'noopener,noreferrer')
+      } catch { /* Invalid terminal text is not a web link. */ }
+    }
     const terminal = new Terminal({
       fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, monospace', fontSize: 13, lineHeight: 1.18,
       cursorBlink: true, cursorStyle: 'bar', scrollback: 3000, allowTransparency: false, allowProposedApi: true,
       theme: originalTheme,
       macOptionIsMeta: true,
+      linkHandler: { activate: openLink },
     })
-    const fit = new FitAddon(); terminal.loadAddon(fit); terminal.open(host.current)
+    const fit = new FitAddon(); terminal.loadAddon(fit); terminal.loadAddon(new WebLinksAddon(openLink)); terminal.open(host.current)
     terminalRef.current = terminal; fitRef.current = fit
     let sequence = -1
     let ready = false

@@ -1,4 +1,4 @@
-export type AgentId = 'codex' | 'claude' | 'kimi' | 'shell'
+export type AgentId = 'codex' | 'claude' | 'opencode' | 'kimi' | 'shell'
 export interface AgentInfo { id: AgentId; label: string; color: string; available: boolean; subscription: boolean }
 export interface ChatSession {
   id: string; name: string; agent: AgentId; cwd: string; bypass: boolean
@@ -11,8 +11,8 @@ export interface ChatSession {
   open: boolean; pinned: boolean; updatedAt: string; preview?: string; hasConversation?: boolean; restoreError?: string | null
 }
 export interface Notice { id: string; sessionId: string; name: string; kind: string; text: string; at: string }
-export interface Operation { id: string; text: string; status: string; result?: string; at: string }
-export interface Settings { defaultAgent: AgentId; defaultBypass: boolean; terminalFontSize?: number; terminalAppearance?: 'focus' | 'original'; workspaceRoute?: string | null; selectedId?: string | null; coordinatorEffort?: 'medium' | 'high'; voiceName?: string; voiceStyle?: string }
+export interface Operation { id: string; text: string; status: string; result?: string; at: string; images?: string[] }
+export interface Settings { defaultAgent: AgentId; defaultBypass: boolean; terminalFontSize?: number; terminalAppearance?: 'focus' | 'original'; workspaceTheme?: 'dark' | 'light' | 'system'; workspaceRoute?: string | null; selectedId?: string | null; coordinatorEffort?: 'medium' | 'high'; voiceName?: string; voiceStyle?: string }
 export interface VoiceOwner { clientId: string; surface: 'chats' | 'workspace' }
 export interface FileEntry { name: string; path: string; directory: boolean; size: number; modifiedAt: string | null }
 export interface Folder { path: string; parent: string; entries: FileEntry[]; truncated: boolean; mode: string }

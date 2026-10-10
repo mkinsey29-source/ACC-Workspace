@@ -5,6 +5,7 @@ import { categoryIcon } from '../lib/categories'
 import { contentUrl } from '../desktop/client'
 import MakLogo from './MakLogo'
 import MakText from './MakText'
+import { EntityStatusButton } from './EntityControls'
 
 interface SidebarProps {
   pinned: WorkspaceEntity[]
@@ -24,6 +25,7 @@ interface SidebarProps {
 
 function Item({ entity, active }: { entity: WorkspaceEntity; active: boolean }) {
   return (
+    <div className="sidebar-item-row" data-card={entity.id}>
     <a
       href={entityHash(entity.id)}
       className={`sidebar-item${active ? ' active' : ''}${entity.pinned ? ' pinned' : ''}`}
@@ -33,8 +35,9 @@ function Item({ entity, active }: { entity: WorkspaceEntity; active: boolean }) 
         {entity.icon ? <img src={contentUrl(`/workspace/${entity.folder}/${entity.icon}`)} width="24" height="24" alt="" decoding="async" /> : categoryIcon(entity.category)}
       </span>
       <span className="item-text">{entity.title}</span>
-      <span className={`status-dot ${entity.status}`} title={entity.status} />
     </a>
+    <EntityStatusButton entity={entity} />
+    </div>
   )
 }
 

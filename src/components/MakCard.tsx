@@ -2,6 +2,7 @@ import type { WorkspaceEntity } from '../types'
 import { entityHash } from '../lib/route'
 import { categoryIcon } from '../lib/categories'
 import { contentUrl } from '../desktop/client'
+import { EntityStatusButton } from './EntityControls'
 
 /**
  * The design-system card: glass surface over the aura, gradient edge
@@ -12,6 +13,7 @@ import { contentUrl } from '../desktop/client'
 export default function MakCard({ entity }: { entity: WorkspaceEntity }) {
   const steps = entity.steps.length
   return (
+    <div className="entity-card-wrap" data-card={entity.id}>
     <a
       href={entityHash(entity.id)}
       className={`mak-card entity-card${entity.pinned ? ' pinned' : ''}`}
@@ -23,7 +25,6 @@ export default function MakCard({ entity }: { entity: WorkspaceEntity }) {
           {entity.category || 'other'}
         </span>
         {entity.pinned && <span className="chip chip-pin">pinned</span>}
-        <span className={`status-dot ${entity.status}`} title={entity.status} />
       </div>
 
       <div className="card-project-title">
@@ -44,5 +45,7 @@ export default function MakCard({ entity }: { entity: WorkspaceEntity }) {
         </span>
       </div>
     </a>
+    <EntityStatusButton entity={entity} />
+    </div>
   )
 }
