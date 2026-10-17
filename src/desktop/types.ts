@@ -1,4 +1,4 @@
-export type AgentId = 'codex' | 'claude' | 'opencode' | 'kimi' | 'shell'
+export type AgentId = 'codex' | 'claude' | 'antigravity' | 'opencode' | 'kimi' | 'shell'
 export interface AgentInfo { id: AgentId; label: string; color: string; available: boolean; subscription: boolean }
 export interface ChatSession {
   id: string; name: string; agent: AgentId; cwd: string; bypass: boolean
@@ -7,12 +7,15 @@ export interface ChatSession {
   lastOutputAt: string | null; lastInputAt: string | null; nativeId: string | null
   attention: boolean; cols: number; rows: number; exitCode?: number | null
   activity: 'idle' | 'working' | 'waiting'; unread: boolean; completionVersion: number
-  tabOrder: number; tabColor: string | null
+  tabOrder: number; tabColor: string | null; group: string | null
   open: boolean; pinned: boolean; updatedAt: string; preview?: string; hasConversation?: boolean; restoreError?: string | null
 }
+export interface RecentProject { path: string; name: string; sources: ('workspace' | 'mrmak' | 'claude' | 'codex')[]; pinned: boolean; lastUsedAt: string | null }
+export interface Handoff { status: 'summarizing' | 'opening' | 'done' | 'failed'; error?: string | null; sessionId?: string | null; file?: string | null; at: string }
 export interface Notice { id: string; sessionId: string; name: string; kind: string; text: string; at: string }
 export interface Operation { id: string; text: string; status: string; result?: string; at: string; images?: string[] }
-export interface Settings { defaultAgent: AgentId; defaultBypass: boolean; terminalFontSize?: number; terminalAppearance?: 'focus' | 'original'; workspaceTheme?: 'dark' | 'light' | 'system'; workspaceRoute?: string | null; selectedId?: string | null; coordinatorEffort?: 'medium' | 'high'; voiceName?: string; voiceStyle?: string }
+export interface Settings { defaultAgent: AgentId; transcribeProvider?: 'local' | 'openai' | 'openrouter' | 'off'; defaultBypass: boolean; terminalFontSize?: number; terminalAppearance?: 'focus' | 'original'; workspaceTheme?: 'dark' | 'light' | 'system'; workspaceRoute?: string | null; selectedId?: string | null; coordinatorEffort?: 'medium' | 'high'; voiceName?: string; voiceStyle?: string; handoffAfter?: number; terminalOptionMeta?: boolean; collapsedGroups?: string[]; groupColors?: Record<string, string>; systemEvents?: SystemEventsMode }
+export type SystemEventsMode = 'full' | 'compact' | 'hidden'
 export interface VoiceOwner { clientId: string; surface: 'chats' | 'workspace' }
 export interface FileEntry { name: string; path: string; directory: boolean; size: number; modifiedAt: string | null }
 export interface Folder { path: string; parent: string; entries: FileEntry[]; truncated: boolean; mode: string }
@@ -27,5 +30,5 @@ export interface DesktopState {
 export interface ServiceEvent {
   type: string; id?: string; data?: string; sequence?: number; session?: ChatSession; sessions?: ChatSession[]
   selectedId?: string; sessionId?: string; state?: string; error?: string; notice?: Notice
-  operation?: Operation; settings?: Settings; owner?: VoiceOwner | null; window?: string; route?: string; preview?: Preview
+  operation?: Operation; settings?: Settings; owner?: VoiceOwner | null; window?: string; route?: string; preview?: Preview; handoff?: Handoff
 }
